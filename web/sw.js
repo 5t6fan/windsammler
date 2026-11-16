@@ -1,12 +1,10 @@
 // Service Worker: App und Anlagendaten offline verfügbar halten.
 // Bei Änderungen an App-Dateien VERSION erhöhen, damit iPhones die neue Fassung laden.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const APP = [
-  './', 'index.html', 'style.css', 'app.js', 'online.js', 'config.js', 'manifest.webmanifest',
+  './', 'index.html', 'datenschutz.html', 'style.css', 'app.js', 'online.js', 'config.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js',
+  'vendor/leaflet.css', 'vendor/leaflet.js', 'vendor/supabase.js',
 ];
 const DATEN = 'data/wind.json';
 
@@ -24,8 +22,8 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  // Kartenkacheln und Supabase-Anfragen immer direkt ans Netz
-  if (e.request.method !== 'GET' || url.hostname.endsWith('openstreetmap.org') || url.hostname.endsWith('supabase.co')) return;
+  // Nur eigene Dateien cachen; Kartenkacheln, Supabase und Turnstile immer direkt ans Netz
+  if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
 
   if (url.pathname.endsWith(DATEN)) {
     // Daten: sofort aus dem Cache, im Hintergrund aktualisieren

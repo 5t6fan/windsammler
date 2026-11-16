@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -60,9 +60,24 @@
       <div id="kompass-hinweis" class="leise klein" hidden>Kein Kompass: Der Pfeil zeigt relativ zu Norden (oben).</div>
     </div>
 
-    <div class="map-wrap">
+    <div class="map-wrap" id="map-wrap">
       <div id="map"></div>
+      <button id="btn-vollbild" class="map-knopf oben" aria-label="Karte im Vollbild">⤢</button>
       <button id="btn-zentrieren" class="map-knopf" aria-label="Auf meinen Standort zentrieren">◎</button>
+      <button id="map-info" class="map-info" aria-label="Details anzeigen">
+        <svg viewBox="0 0 100 100" class="mini-kompass" aria-hidden="true">
+          <circle cx="50" cy="50" r="46" class="kompass-ring"/>
+          <g id="pfeil-mini">
+            <path d="M50 10 L64 58 L50 50 L36 58 Z" class="pfeil-spitze"/>
+            <path d="M50 50 L64 58 L50 90 L36 58 Z" class="pfeil-ende"/>
+          </g>
+        </svg>
+        <span class="map-info-text">
+          <b id="map-info-dist">–</b>
+          <span id="map-info-titel" class="leise"></span>
+        </span>
+        <span class="map-info-mehr">Details ›</span>
+      </button>
     </div>
 
     <div class="filter">
@@ -100,7 +115,7 @@
         <label class="knopf">Importieren<input type="file" id="inp-import" accept="application/json" hidden></label>
       </div>
     </div>
-    <p class="quelle leise klein" id="quelle"></p>
+    <p class="quelle leise klein"><span id="quelle"></span> <a href="datenschutz.html">Datenschutz</a></p>
   </section>
 
   <!-- ============ Rangliste ============ -->
@@ -109,7 +124,9 @@
       <p class="start-titel">Mit Freunden um die Wette sammeln</p>
       <p class="leise">Wähle einen Spielernamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.</p>
       <input id="inp-name" class="eingabe" maxlength="24" placeholder="Spielername" autocomplete="nickname">
+      <div id="captcha" class="captcha"></div>
       <button id="btn-anmelden" class="knopf haupt">Los geht’s</button>
+      <p class="leise klein">Mit „Los geht’s“ wird ein Spielerkonto angelegt. Details in der <a href="datenschutz.html">Datenschutzerklärung</a>.</p>
     </div>
 
     <div id="rang-inhalt" hidden>
@@ -162,6 +179,7 @@
         <p class="leise klein">Gewertet werden Funde, die du nach der Anmeldung sammelst. Der Server prüft, dass du wirklich unter 300 m an der Anlage warst – deine Position wird dabei nicht gespeichert.</p>
       </div>
       <button id="btn-konto-loeschen" class="link-knopf">Konto löschen</button>
+      <a href="datenschutz.html" class="link-knopf">Datenschutz</a>
     </div>
   </section>
 </main>
@@ -174,8 +192,9 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<!-- Leaflet 1.9.4 und supabase-js 2.45.4, lokal ausgeliefert (keine Drittanbieter-CDNs) -->
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/supabase.js"></script>
 <script src="config.js"></script>
 <script src="app.js"></script>
 <script src="online.js"></script>

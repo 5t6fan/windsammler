@@ -5,4 +5,7 @@
 window.WINDSAMMLER_CONFIG = {
   supabaseUrl: 'https://slgxtcpasnewiajiqlff.supabase.co',
   supabaseKey: 'sb_publishable_hNoVO3n1yuGuKvl68bB6RQ_-A3LU2RR',
+  // Cloudflare-Turnstile "Site Key" (öffentlich). Den zugehörigen Secret Key nur im
+  // Supabase-Dashboard eintragen (Authentication → Attack Protection → Captcha).
+  turnstileSiteKey: '',
 };

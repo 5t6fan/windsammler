@@ -49,6 +49,13 @@ create table if not exists public.funde (
   primary key (nutzer, anlage)
 );
 
+-- Fehlgeschlagene Beitrittsversuche (gegen Durchprobieren von Einladungscodes)
+create table if not exists public.beitritt_fehler (
+  nutzer uuid not null references auth.users (id) on delete cascade,
+  zeit   timestamptz not null default now()
+);
+create index if not exists beitritt_fehler_nutzer on public.beitritt_fehler (nutzer, zeit);
+
 create index if not exists funde_anlage_zeit on public.funde (anlage, zeit);
 create index if not exists funde_nutzer_zeit on public.funde (nutzer, zeit desc);
 create index if not exists mitglieder_nutzer on public.mitglieder (nutzer);
@@ -62,6 +69,7 @@ alter table public.profile    enable row level security;
 alter table public.gruppen    enable row level security;
 alter table public.mitglieder enable row level security;
 alter table public.funde      enable row level security;
+alter table public.beitritt_fehler enable row level security;
 
 drop policy if exists profil_lesen on public.profile;
 drop policy if exists profil_anlegen on public.profile;
@@ -202,14 +210,23 @@ begin
   return jsonb_build_object('id', v_id, 'name', btrim(p_name), 'code', v_code);
 end $$;
 
+-- Ein unbekannter Code liefert {"fehler": …} statt einer Exception, damit der
+-- Fehlversuch gespeichert bleibt (eine Exception würde ihn zurückrollen).
 create or replace function public.gruppe_beitreten(p_code text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   v_uid uuid := public._nutzer();
   g     public.gruppen;
 begin
+  if (select count(*) from public.beitritt_fehler
+       where nutzer = v_uid and zeit > now() - interval '1 hour') >= 10 then
+    raise exception 'Zu viele falsche Codes – bitte in einer Stunde erneut versuchen';
+  end if;
   select * into g from public.gruppen where code = upper(btrim(p_code));
-  if not found then raise exception 'Unbekannter Einladungscode'; end if;
+  if not found then
+    insert into public.beitritt_fehler (nutzer) values (v_uid);
+    return jsonb_build_object('fehler', 'Unbekannter Einladungscode');
+  end if;
   if (select count(*) from public.mitglieder where gruppe = g.id) >= 200 then
     raise exception 'Gruppe ist voll';
   end if;
@@ -270,10 +287,31 @@ begin
   delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
 end $$;
 
+-- ---------------------------------------------------------------- Aufräumen (nächtlich per pg_cron)
+-- Anonyme Konten ohne Spielernamen (abgebrochene oder automatisierte Anmeldungen) nach einem Tag löschen,
+-- ebenso alte Fehlversuche.
+
+create or replace function public.aufraeumen()
+returns void language sql security definer set search_path = '' as $$
+  delete from auth.users u
+   where u.is_anonymous and u.created_at < now() - interval '1 day'
+     and not exists (select 1 from public.profile p where p.id = u.id);
+  delete from public.beitritt_fehler where zeit < now() - interval '1 day';
+  delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
+$$;
+
+do $$
+begin
+  create extension if not exists pg_cron;
+  perform cron.schedule('windsammler-aufraeumen', '17 3 * * *', 'select public.aufraeumen()');
+exception when others then
+  raise notice 'pg_cron nicht verfügbar – Aufräumen bitte manuell planen: %', sqlerrm;
+end $$;
+
 -- ---------------------------------------------------------------- Rechte
 
 revoke all on all functions in schema public from public, anon;
-revoke all on function public.distanz_m(float8, float8, float8, float8), public._nutzer() from authenticated;
+revoke all on function public.distanz_m(float8, float8, float8, float8), public._nutzer(), public.aufraeumen() from authenticated;
 grant execute on function
   public.sammeln(text, float8, float8, timestamptz),
   public.mein_stand(),

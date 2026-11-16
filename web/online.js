@@ -57,13 +57,51 @@ const Online = (() => {
     profil = data;
   }
 
+  /* ---------- Captcha (Cloudflare Turnstile) gegen massenhaft angelegte Konten ----------
+   * Wird erst geladen, wenn jemand die Anmeldeseite öffnet – wer die Rangliste nicht nutzt,
+   * hat keinen Kontakt zu Cloudflare. Ohne turnstileSiteKey in config.js entfällt das Captcha. */
+  let captchaToken = null;
+  let captchaWidget = null;
+  let captchaLaedt = null;
+
+  function ladeCaptcha() {
+    if (!cfg.turnstileSiteKey) return;
+    if (!captchaLaedt) {
+      captchaLaedt = new Promise((ok, fehler) => {
+        window.windsammlerTurnstile = ok;
+        const s = document.createElement('script');
+        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=windsammlerTurnstile';
+        s.async = true;
+        s.onerror = fehler;
+        document.head.appendChild(s);
+      });
+    }
+    captchaLaedt.then(() => {
+      if (captchaWidget !== null) return;
+      captchaWidget = window.turnstile.render('#captcha', {
+        sitekey: cfg.turnstileSiteKey,
+        language: 'de',
+        callback: (t) => { captchaToken = t; $('#btn-anmelden').disabled = false; },
+        'expired-callback': () => { captchaToken = null; $('#btn-anmelden').disabled = true; },
+        'error-callback': () => { captchaToken = null; $('#btn-anmelden').disabled = true; },
+      });
+    }).catch(() => toast('Sicherheitsprüfung nicht ladbar – Internetverbindung prüfen'));
+  }
+
+  function captchaZuruecksetzen() {
+    captchaToken = null;
+    if (captchaWidget !== null && window.turnstile) window.turnstile.reset(captchaWidget);
+  }
+
   async function anmelden(name) {
     name = name.trim();
     if (name.length < 2) return toast('Bitte mindestens 2 Zeichen');
+    if (cfg.turnstileSiteKey && !captchaToken) return toast('Bitte die Sicherheitsprüfung abwarten');
     try {
       let { data: { session } } = await sb.auth.getSession();
       if (!session) {
-        const r = await sb.auth.signInAnonymously();
+        const r = await sb.auth.signInAnonymously(captchaToken ? { options: { captchaToken } } : undefined);
+        captchaZuruecksetzen();
         if (r.error) throw r.error;
         session = r.data.session;
       }
@@ -193,6 +231,7 @@ const Online = (() => {
     if (code.length !== 6) return toast('Der Code hat 6 Zeichen');
     try {
       const g = await rpc('gruppe_beitreten', { p_code: code });
+      if (g.fehler) throw new Error(g.fehler);
       $('#inp-code').value = '';
       gruppe = g.id;
       await ladeGruppen();
@@ -261,7 +300,13 @@ const Online = (() => {
     if (!aktiv) return;
     $('#rang-anmelden').hidden = !!profil;
     $('#rang-inhalt').hidden = !profil;
-    if (!profil) return;
+    if (!profil) {
+      if ($('#view-rang').classList.contains('aktiv')) {
+        $('#btn-anmelden').disabled = !!cfg.turnstileSiteKey && !captchaToken;
+        ladeCaptcha();
+      }
+      return;
+    }
     $('#rang-name').textContent = profil.name;
     renderWarte();
 

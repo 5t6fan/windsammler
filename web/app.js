@@ -55,6 +55,7 @@ function init(d) {
   initKarte();
   renderHeft();
   if (location.hash === '#heft' || location.hash === '#rang') zeigeView(location.hash.slice(1));
+  if (PARAM.has('karte')) vollbild(true);
 
   const p = PARAM.get('pos');
   if (p) {
@@ -206,6 +207,8 @@ function renderZiel() {
     knopf.textContent = '★ Jetzt sammeln';
   }
   $('#btn-naechste').hidden = !(S.manuell && S.sel !== S.naechste);
+  $('#map-info-dist').textContent = entfernung(d) + ' ' + KURZ[sektor(b)] + (gesammelt ? ' ✓' : '');
+  $('#map-info-titel').textContent = titel(a) + (a.park ? ' · ' + a.park : '');
   S.zielPeilung = b;
   drehePfeil();
   zeigeEntdecker(a.id);
@@ -227,6 +230,7 @@ function drehePfeil() {
   $('#kompass-hinweis').hidden = !ohneKompass;
   const winkel = ohneKompass ? S.zielPeilung : S.zielPeilung - S.heading;
   $('#pfeil').style.transform = 'rotate(' + winkel + 'deg)';
+  $('#pfeil-mini').style.transform = 'rotate(' + winkel + 'deg)';
 }
 
 function titel(a) {
@@ -303,7 +307,7 @@ function waehle(i, zentrieren) {
   S.manuell = i !== S.naechste;
   renderAlles();
   if (zentrieren && S.map) S.map.panTo([S.lat[i], S.lon[i]]);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (!istVollbild()) window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 $('#btn-naechste').addEventListener('click', () => {
@@ -373,6 +377,21 @@ function zentriere() {
   S.map.fitBounds(punkte, { padding: [40, 40], maxZoom: 15 });
 }
 $('#btn-zentrieren').addEventListener('click', zentriere);
+
+/* Vollbild-Karte */
+const istVollbild = () => $('#map-wrap').classList.contains('vollbild');
+function vollbild(an) {
+  $('#map-wrap').classList.toggle('vollbild', an);
+  document.body.classList.toggle('vollbild-an', an);
+  const knopf = $('#btn-vollbild');
+  knopf.textContent = an ? '✕' : '⤢';
+  knopf.setAttribute('aria-label', an ? 'Vollbild schließen' : 'Karte im Vollbild');
+  // Leaflet muss die neue Größe kennen (behält dabei den Mittelpunkt bei)
+  if (S.map) setTimeout(() => S.map.invalidateSize({ animate: false }), 30);
+}
+$('#btn-vollbild').addEventListener('click', () => vollbild(!istVollbild()));
+$('#map-info').addEventListener('click', () => { vollbild(false); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && istVollbild()) vollbild(false); });
 
 /* ---------------- Filter ---------------- */
 
@@ -589,6 +608,7 @@ document.querySelector('.tabs').addEventListener('click', (e) => {
 });
 
 function zeigeView(v) {
+  if (istVollbild()) vollbild(false);
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('an', b.dataset.view === v));
   document.querySelectorAll('.view').forEach((s) => s.classList.toggle('aktiv', s.id === 'view-' + v));
   if (v === 'heft') renderHeft();
