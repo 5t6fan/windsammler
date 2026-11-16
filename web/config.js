@@ -3,6 +3,6 @@
 // Zugriffsregeln in supabase/schema.sql. Den service_role-Key NIEMALS hier eintragen.
 // Leer lassen = App läuft rein lokal ohne Rangliste.
 window.WINDSAMMLER_CONFIG = {
-  supabaseUrl: '',
-  supabaseKey: '',
+  supabaseUrl: 'https://slgxtcpasnewiajiqlff.supabase.co',
+  supabaseKey: 'sb_publishable_hNoVO3n1yuGuKvl68bB6RQ_-A3LU2RR',
 };
