@@ -188,4 +188,41 @@ main { max-width: 640px; margin: 0 auto; padding: 12px 16px; }
 }
 .toast.zeigen { opacity: 1; transform: translate(-50%, 0); }
 
+/* --- Rangliste --- */
+.eingabe {
+  width: 100%; min-height: 44px; padding: 0 14px; border-radius: 12px;
+  border: 1px solid var(--linie); background: var(--bg); color: var(--text); font: inherit; font-size: 16px;
+}
+.eingabe:focus { outline: 2px solid var(--akzent); outline-offset: -1px; }
+.eingabe.code, b.code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
+.start .eingabe { margin-top: 12px; text-align: center; }
+.zeile { display: flex; gap: 8px; }
+.zeile + .zeile { margin-top: 8px; }
+.zeile .eingabe { flex: 1; min-width: 0; }
+.zeile .knopf { flex: none; min-width: 112px; }
+
+.ich-karte { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.name-knopf { border: 0; background: none; padding: 0; font-size: 21px; font-weight: 700; cursor: pointer; text-align: left; }
+.name-knopf::after { content: " ✎"; font-size: 14px; color: var(--leise); font-weight: 400; }
+.ich-punkte { text-align: center; flex: none; }
+.ich-punkte b { display: block; font-size: 34px; line-height: 1.1; color: var(--akzent); font-variant-numeric: tabular-nums; }
+.ich-punkte span { font-size: 12px; color: var(--leise); }
+
+.hinweis { background: color-mix(in srgb, var(--gold) 16%, transparent); border-radius: 12px; padding: 10px 14px; font-size: 14px; margin-bottom: 12px; }
+.chips.umbruch { flex-wrap: wrap; margin-bottom: 12px; }
+.gruppe-kopf { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0 10px; }
+.gruppe-kopf b.code { color: var(--text); font-size: 18px; }
+#rang-zeitraum { margin-bottom: 10px; }
+.rangliste .platz { width: 32px; text-align: center; font-size: 18px; font-weight: 700; color: var(--leise); flex: none; }
+.rangliste li { cursor: default; }
+.rangliste li.ich { background: var(--akzent-hell); }
+.link-knopf { border: 0; background: none; color: var(--leise); text-decoration: underline; font-size: 14px; padding: 12px 4px; cursor: pointer; }
+
+.punkte-regeln > div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--linie); }
+.punkte-regeln > div:first-child { border-top: 0; }
+.punkte-regeln b { color: var(--akzent); }
+.punkte-regeln p { margin: 10px 0 0; }
+
+.entdecker { margin-top: 8px; font-size: 14px; font-weight: 600; }
+
 .leaflet-container { font: inherit; }

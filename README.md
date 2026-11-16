@@ -12,6 +12,15 @@ pipeline/rohdaten/       EinheitenWind.xml, Katalogwerte.xml aus dem Gesamtdaten
 web/                     die App: index.html, app.js, style.css, sw.js (offline), manifest
 ```
 
+## Rangliste (Supabase)
+
+- `supabase/schema.sql` – Tabellen, Zugriffsregeln, Funktionen (sammeln mit 300-m- und Tempo-Prüfung, Gruppen, Rangliste)
+- `pipeline/supabase_sync.py` – spielt das Schema ein und lädt die Anlagen hoch (`DATABASE_URL` in `pipeline/.env`)
+- `web/config.js` – Projekt-URL und öffentlicher anon/publishable Key; leer = ohne Rangliste
+- In Supabase: Authentication → Sign In / Providers → „Allow anonymous sign-ins“ einschalten
+
+Nach jedem Daten-Update zusätzlich `python pipeline/supabase_sync.py` ausführen.
+
 ## Daten aktualisieren
 
 1. Neuen Gesamtdatenexport laden, `EinheitenWind.xml` und `Katalogwerte.xml` nach `pipeline/rohdaten/` kopieren

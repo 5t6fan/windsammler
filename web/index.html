@@ -52,6 +52,7 @@
       <div id="ziel-ort" class="leise"></div>
       <div id="ziel-tags" class="tags"></div>
       <p id="ziel-text" class="ziel-text"></p>
+      <div id="ziel-entdecker" class="entdecker" hidden></div>
       <div class="ziel-aktionen">
         <button id="btn-sammeln" class="knopf haupt">Sammeln</button>
         <button id="btn-naechste" class="knopf" hidden>Zur nächsten</button>
@@ -101,16 +102,82 @@
     </div>
     <p class="quelle leise klein" id="quelle"></p>
   </section>
+
+  <!-- ============ Rangliste ============ -->
+  <section id="view-rang" class="view">
+    <div id="rang-anmelden" class="karte start">
+      <p class="start-titel">Mit Freunden um die Wette sammeln</p>
+      <p class="leise">Wähle einen Spielernamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.</p>
+      <input id="inp-name" class="eingabe" maxlength="24" placeholder="Spielername" autocomplete="nickname">
+      <button id="btn-anmelden" class="knopf haupt">Los geht’s</button>
+    </div>
+
+    <div id="rang-inhalt" hidden>
+      <div class="karte ich-karte">
+        <div>
+          <div class="leise klein">Spielername</div>
+          <button id="rang-name" class="name-knopf" title="Antippen zum Ändern"></button>
+          <div id="rang-anlagen" class="leise klein"></div>
+        </div>
+        <div class="ich-punkte"><b id="rang-punkte">–</b><span>Punkte</span></div>
+      </div>
+      <div id="rang-warte" class="hinweis" hidden></div>
+
+      <h3 class="abschnitt">Meine Gruppen</h3>
+      <div class="chips umbruch" id="rang-gruppen"></div>
+      <div id="rang-keine" class="karte leise">Du bist noch in keiner Gruppe. Erstelle eine oder tritt mit einem Einladungscode bei.</div>
+
+      <div id="rang-gruppe" hidden>
+        <div class="gruppe-kopf">
+          <span class="leise">Einladungscode <b id="rang-code" class="code"></b></span>
+          <button id="btn-teilen" class="knopf">Einladen</button>
+        </div>
+        <div class="chips" id="rang-zeitraum">
+          <button data-z="gesamt" class="an">Gesamt</button>
+          <button data-z="monat">Dieser Monat</button>
+        </div>
+        <ol id="rang-liste" class="liste rangliste"></ol>
+        <button id="btn-verlassen" class="link-knopf">Gruppe verlassen</button>
+      </div>
+
+      <h3 class="abschnitt">Gruppe beitreten oder erstellen</h3>
+      <div class="karte">
+        <div class="zeile">
+          <input id="inp-code" class="eingabe code" maxlength="6" placeholder="CODE" autocapitalize="characters" autocomplete="off" spellcheck="false">
+          <button id="btn-beitreten" class="knopf haupt">Beitreten</button>
+        </div>
+        <div class="zeile">
+          <input id="inp-gruppe" class="eingabe" maxlength="40" placeholder="Name der neuen Gruppe">
+          <button id="btn-erstellen" class="knopf">Erstellen</button>
+        </div>
+      </div>
+
+      <h3 class="abschnitt">Punkte</h3>
+      <div class="karte punkte-regeln">
+        <div><span>Jede Anlage</span><b>+1</b></div>
+        <div><span>Neues Modell</span><b>+5</b></div>
+        <div><span>Neue Marke</span><b>+10</b></div>
+        <div><span>Seltenes Modell (≤ 20 in Deutschland)</span><b>+20</b></div>
+        <div><span>Als Erste/r überhaupt gesammelt</span><b>+3</b></div>
+        <p class="leise klein">Gewertet werden Funde, die du nach der Anmeldung sammelst. Der Server prüft, dass du wirklich unter 300 m an der Anlage warst – deine Position wird dabei nicht gespeichert.</p>
+      </div>
+      <button id="btn-konto-loeschen" class="link-knopf">Konto löschen</button>
+    </div>
+  </section>
 </main>
 
 <nav class="tabs">
   <button data-view="naehe" class="an"><span>🧭</span>In der Nähe</button>
   <button data-view="heft"><span>📒</span>Sammelheft</button>
+  <button data-view="rang" id="tab-rang" hidden><span>🏆</span>Rangliste</button>
 </nav>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
 <script src="app.js"></script>
+<script src="online.js"></script>
 </body>
 </html>

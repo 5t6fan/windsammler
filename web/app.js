@@ -54,7 +54,7 @@ function init(d) {
   $('#btn-start').disabled = false;
   initKarte();
   renderHeft();
-  if (location.hash === '#heft') zeigeView('heft');
+  if (location.hash === '#heft' || location.hash === '#rang') zeigeView(location.hash.slice(1));
 
   const p = PARAM.get('pos');
   if (p) {
@@ -208,6 +208,17 @@ function renderZiel() {
   $('#btn-naechste').hidden = !(S.manuell && S.sel !== S.naechste);
   S.zielPeilung = b;
   drehePfeil();
+  zeigeEntdecker(a.id);
+}
+
+// Erster Finder in meinen Gruppen (nur mit Rangliste)
+async function zeigeEntdecker(id) {
+  const el = $('#ziel-entdecker');
+  if (typeof Online === 'undefined' || !Online.angemeldet()) { el.hidden = true; return; }
+  const e = await Online.entdecker(id);
+  if (S.sel == null || anlage(S.sel).id !== id) return;  // inzwischen andere Anlage gewählt
+  el.hidden = !e;
+  if (e) el.textContent = '🚩 Erstentdeckt von ' + (e.ich ? 'dir' : e.name) + ' am ' + datum(Date.parse(e.zeit));
 }
 
 function drehePfeil() {
@@ -391,7 +402,7 @@ function speichereHeft() {
   try { localStorage.setItem(SPEICHER, JSON.stringify(S.heft)); } catch (_) { toast('Speichern nicht möglich'); }
 }
 
-$('#btn-sammeln').addEventListener('click', () => {
+$('#btn-sammeln').addEventListener('click', async () => {
   if (S.sel == null || !S.pos) return;
   const a = anlage(S.sel);
   const d = distanz(S.pos.lat, S.pos.lon, a.lat, a.lon);
@@ -406,12 +417,21 @@ $('#btn-sammeln').addEventListener('click', () => {
   const neu = pruefeAbzeichen();
   speichereHeft();
   if (navigator.vibrate) navigator.vibrate(30);
-  toast(neu.length ? neu.map((x) => x.ico + ' ' + x.name).join(' · ')
-    : neueMarke ? 'Neue Marke: ' + a.marke + '!'
-    : neuesModell ? 'Neues Modell: ' + titel(a) + '!'
-    : 'Gesammelt: ' + titel(a));
   renderAlles();
   renderHeft();
+
+  let meldung = neu.length ? neu.map((x) => x.ico + ' ' + x.name).join(' · ')
+    : neueMarke ? 'Neue Marke: ' + a.marke + '!'
+    : neuesModell ? 'Neues Modell: ' + titel(a) + '!'
+    : 'Gesammelt: ' + titel(a);
+  if (typeof Online !== 'undefined' && Online.angemeldet()) {
+    const r = await Online.sammeln(a.id, S.pos.lat, S.pos.lon);
+    if (r && r.punkte) meldung = '+' + r.punkte + ' Punkte · ' + meldung + (r.erstentdecker ? ' · Erstentdecker!' : '');
+    else if (r && r.wartend) meldung += ' · wird übertragen, sobald Netz da ist';
+    else if (r && r.fehler) meldung += ' · nicht gewertet: ' + r.fehler;
+    renderZiel();
+  }
+  toast(meldung);
 });
 
 function statistik() {
@@ -572,6 +592,7 @@ function zeigeView(v) {
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('an', b.dataset.view === v));
   document.querySelectorAll('.view').forEach((s) => s.classList.toggle('aktiv', s.id === 'view-' + v));
   if (v === 'heft') renderHeft();
+  if (v === 'rang' && typeof Online !== 'undefined') Online.zeigen();
   if (v === 'naehe' && S.map) setTimeout(() => S.map.invalidateSize(), 0);
   window.scrollTo(0, 0);
 }
