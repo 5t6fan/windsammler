@@ -76,6 +76,15 @@ create table if not exists public.meldungen (
   primary key (kommentar, nutzer)
 );
 
+-- Blockierte Spieler: deren Kommentare sieht man nicht mehr (App-Store-Vorgabe für Nutzerinhalte)
+create table if not exists public.blockiert (
+  id        uuid primary key default gen_random_uuid(),
+  nutzer    uuid not null references public.profile (id) on delete cascade,
+  blockiert uuid not null references public.profile (id) on delete cascade,
+  zeit      timestamptz not null default now(),
+  unique (nutzer, blockiert)
+);
+
 -- Fehlgeschlagene Beitrittsversuche (gegen Durchprobieren von Einladungscodes)
 create table if not exists public.beitritt_fehler (
   nutzer uuid not null references auth.users (id) on delete cascade,
@@ -99,6 +108,7 @@ alter table public.funde      enable row level security;
 alter table public.beitritt_fehler enable row level security;
 alter table public.kommentare enable row level security;
 alter table public.meldungen  enable row level security;
+alter table public.blockiert  enable row level security;
 
 drop policy if exists profil_lesen on public.profile;
 drop policy if exists profil_anlegen on public.profile;
@@ -371,6 +381,7 @@ language sql stable security definer set search_path = '' as $$
    where k.anlage = p_anlage
      and auth.uid() is not null
      and (k.nutzer = auth.uid() or (select count(*) from public.meldungen m where m.kommentar = k.id) < 3)
+     and not exists (select 1 from public.blockiert b where b.nutzer = auth.uid() and b.blockiert = k.nutzer)
    order by k.nutzer = auth.uid() desc, k.zeit desc
    limit 100
 $$;
@@ -409,6 +420,34 @@ begin
   end if;
   insert into public.meldungen (kommentar, nutzer) values (p_kommentar, v_uid) on conflict do nothing;
 end $$;
+
+-- Verfasser eines Kommentars blockieren (ohne dessen Konto-ID preiszugeben)
+create or replace function public.nutzer_blockieren(p_kommentar uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid uuid := public._nutzer();
+  v_wer uuid;
+begin
+  select nutzer into v_wer from public.kommentare where id = p_kommentar;
+  if v_wer is null then raise exception 'Kommentar nicht gefunden'; end if;
+  if v_wer = v_uid then raise exception 'Du kannst dich nicht selbst blockieren'; end if;
+  if (select count(*) from public.blockiert where nutzer = v_uid) >= 500 then raise exception 'Höchstens 500 blockierte Spieler'; end if;
+  insert into public.blockiert (nutzer, blockiert) values (v_uid, v_wer) on conflict do nothing;
+end $$;
+
+create or replace function public.blockierte_lesen()
+returns table (id uuid, name text, zeit timestamptz)
+language sql stable security definer set search_path = '' as $$
+  select b.id, p.name, b.zeit
+    from public.blockiert b join public.profile p on p.id = b.blockiert
+   where b.nutzer = auth.uid()
+   order by b.zeit desc
+$$;
+
+create or replace function public.entblocken(p_id uuid)
+returns void language sql security definer set search_path = '' as $$
+  delete from public.blockiert where id = p_id and nutzer = auth.uid()
+$$;
 
 -- ---------------------------------------------------------------- Konto löschen (DSGVO)
 
@@ -461,5 +500,8 @@ grant execute on function
   public.kommentar_speichern(text, int, text),
   public.kommentar_loeschen(text),
   public.kommentar_melden(uuid),
+  public.nutzer_blockieren(uuid),
+  public.blockierte_lesen(),
+  public.entblocken(uuid),
   public.konto_loeschen()
 to authenticated;

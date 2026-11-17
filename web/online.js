@@ -382,12 +382,24 @@ const Online = (() => {
     ladeRangliste();
   }
 
+  async function ladeBlockierte() {
+    const box = $('#rang-blockiert');
+    try {
+      const zeilen = await rpc('blockierte_lesen') || [];
+      box.innerHTML = zeilen.length
+        ? zeilen.map((z) => '<li><span class="li-text"><div class="li-titel">' + esc(z.name) + '</div><div class="li-unter">blockiert am ' +
+            datum(Date.parse(z.zeit)) + '</div></span><button class="knopf klein-knopf" data-entblocken="' + esc(z.id) + '">Aufheben</button></li>').join('')
+        : '<li class="leer">Du hast niemanden blockiert.</li>';
+    } catch (_) { box.innerHTML = ''; }
+  }
+
   // Beim Öffnen des Tabs aktualisieren
   async function zeigen() {
     if (!aktiv || !profil) return render();
     await ladeGruppen();
     render();
     sendeWarteschlange();
+    ladeBlockierte();
   }
 
   /* ---------- Bewertungen ----------
@@ -443,7 +455,8 @@ const Online = (() => {
       '<span class="km-sterne" aria-label="' + x.sterne + ' von 5 Sternen">' + sterneText(x.sterne) + '</span></div>' +
       (x.text ? '<p>' + esc(x.text) + '</p>' : '') +
       '<div class="km-fuss leise klein">' + datum(Date.parse(x.zeit)) +
-      (x.ich ? '' : x.gemeldet ? ' · gemeldet' : ' · <button class="link-knopf km-melden" data-melden="' + esc(x.id) + '">Melden</button>') +
+      (x.ich ? '' : (x.gemeldet ? ' · gemeldet' : ' · <button class="link-knopf km-melden" data-melden="' + esc(x.id) + '">Melden</button>') +
+        ' · <button class="link-knopf km-melden" data-blockieren="' + esc(x.id) + '" data-name="' + esc(x.name) + '">Blockieren</button>') +
       '</div></div>').join('');
     const formular = km.gesammelt
       ? '<div class="km-form"><div class="km-wahl" role="radiogroup" aria-label="Sterne">' +
@@ -475,6 +488,16 @@ const Online = (() => {
         await rpc('kommentar_melden', { p_kommentar: melden.dataset.melden });
         toast('Danke, gemeldet');
       } catch (x) { return toast(fehlertext(x)); }
+      return ladeKommentare(id, true);
+    }
+    const block = e.target.closest('button[data-blockieren]');
+    if (block) {
+      if (!confirm('„' + block.dataset.name + '“ blockieren? Du siehst dann keine Kommentare dieser Person mehr. Rückgängig machen kannst du das im Tab Rangliste.')) return;
+      try {
+        await rpc('nutzer_blockieren', { p_kommentar: block.dataset.blockieren });
+        toast('Blockiert');
+      } catch (x) { return toast(fehlertext(x)); }
+      kommentarCache.clear();
       return ladeKommentare(id, true);
     }
     const knopf = e.target.closest('button[data-aktion]');
@@ -525,6 +548,14 @@ const Online = (() => {
     $('#btn-periode-vor').addEventListener('click', () => { if (versatz > 0) { versatz--; ladeRangliste(); } });
     $('#chk-global').addEventListener('change', (e) => globalSetzen(e.target.checked));
     $('#km-inhalt').addEventListener('click', kommentarKlick);
+    $('#rang-blockiert').addEventListener('click', async (e) => {
+      const b = e.target.closest('button[data-entblocken]');
+      if (!b) return;
+      try { await rpc('entblocken', { p_id: b.dataset.entblocken }); } catch (x) { return toast(fehlertext(x)); }
+      kommentarCache.clear();
+      km.id = null;
+      ladeBlockierte();
+    });
     init();
   }
 

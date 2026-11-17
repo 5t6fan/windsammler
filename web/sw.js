@@ -1,8 +1,8 @@
 // Service Worker: App und Anlagendaten offline verfügbar halten.
 // Bei Änderungen an App-Dateien VERSION erhöhen, damit iPhones die neue Fassung laden.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const APP = [
-  './', 'index.html', 'datenschutz.html', 'style.css', 'app.js', 'online.js', 'config.js', 'manifest.webmanifest',
+  './', 'index.html', 'datenschutz.html', 'nutzungsbedingungen.html', 'style.css', 'app.js', 'online.js', 'config.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png',
   'vendor/leaflet.css', 'vendor/leaflet.js', 'vendor/supabase.js',
 ];
