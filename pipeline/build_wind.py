@@ -39,6 +39,9 @@ FELDER = [
 
 # Endgültig stillgelegte Anlagen stehen nicht mehr in der Landschaft
 STATUS_AUSSCHLIESSEN = {"Endgültig stillgelegt"}
+# ... aber wer eine davon vorher gesammelt hat, soll sie im Sammelheft als "abgebaut" sehen.
+# Die App gibt es erst seit 2026; ältere Stilllegungen können in keinem Sammelheft stehen.
+ABGEBAUT_SEIT = "2025-01-01"
 
 
 # Firmen-Varianten derselben Marke (Präfix des MaStR-Herstellernamens -> Marke).
@@ -77,7 +80,15 @@ def marke(hersteller: str | None) -> str | None:
     return RECHTSFORMEN.sub("", hersteller).strip(" ,") or hersteller
 
 
-MODELL = re.compile(r"([A-Z]{1,4})[\s\-]?(\d+(?:[.,]\d+)?)")
+# Firmen- und Füllwörter, die vor der Typensuche entfernt werden ("SIEMENS SWT-3.6" -> "SWT-3.6")
+FUELLWOERTER = re.compile(
+    r"\b(SIEMENS|GAMESA|VENSYS|REPOWER|SENVION|BONUS|HALIADE|DELTA|NORDEX|ENERGY|WINDTECHNIK|WIND|TURBINE|GE|WEA|TYP|MW|KW)\b")
+# Buchstaben + Zahl am Wortanfang: "E 82", "V-112", "SWT 3.6", "MM92"
+MODELL = re.compile(r"(?<![A-Z])([A-Z]{1,4})[\s\-]*(\d+(?:[.,]\d+)?)")
+# Nur eine Zahl gemeldet ("112") – bei diesen Marken ist der Buchstabe eindeutig
+NUR_ZAHL_PRAEFIX = {"Enercon": "E-", "Vestas": "V", "VENSYS Energy": "Vensys "}
+# GE/Siemens-Schreibweise Leistung-Rotor ("2.5-120", "3.6/137/3630", "2.5120")
+LEISTUNG_ROTOR = re.compile(r"^(\d+\.\d+)[-/]?(\d{3})\b")
 
 
 def modell(typ: str | None, marke_: str | None) -> str | None:
@@ -87,10 +98,20 @@ def modell(typ: str | None, marke_: str | None) -> str | None:
     text = typ.upper()
     if marke_:
         text = text.replace(marke_.upper(), " ")
+    text = FUELLWOERTER.sub(" ", text)
     treffer = MODELL.search(text)
     if not treffer:
-        return text.strip()[:20] or None
+        rest = re.sub(r"\s+", "", text).strip("-/,.").replace(",", ".")
+        nur_zahl = re.match(r"(\d{2,3})(?:\D|$)", rest)
+        if nur_zahl and marke_ in NUR_ZAHL_PRAEFIX:
+            return NUR_ZAHL_PRAEFIX[marke_] + nur_zahl.group(1)
+        lr = LEISTUNG_ROTOR.match(rest)
+        if lr:
+            return f"{lr.group(1)}-{lr.group(2)}"
+        return rest.split("/")[0][:20] or None
     buchstaben, nummer = treffer.group(1), treffer.group(2).replace(",", ".")
+    if buchstaben == "E" and marke_ == "Enercon":
+        nummer = nummer.split(".")[0]  # E-66.18 / E-40.6 sind Varianten derselben Familie
     # Enercon schreibt seine Typen mit Bindestrich (E-82), die übrigen ohne (V112, N117, MM92)
     return f"{buchstaben}-{nummer}" if buchstaben == "E" else f"{buchstaben}{nummer}"
 
@@ -141,6 +162,7 @@ def main():
 
     hersteller, status, bundesland = Index(), Index(), Index()
     zeilen = []
+    abgebaut = {}
     zaehler = Counter()
     stand = ""
 
@@ -150,6 +172,9 @@ def main():
         st = katalog.get(d.get("EinheitBetriebsstatus"), "unbekannt")
         if st in STATUS_AUSSCHLIESSEN:
             zaehler["stillgelegt"] += 1
+            ende = d.get("DatumEndgueltigeStilllegung") or ""
+            if ende >= ABGEBAUT_SEIT:
+                abgebaut[d["EinheitMastrNummer"]] = ende
             continue
         lat, lon = zahl(d.get("Breitengrad"), 6), zahl(d.get("Laengengrad"), 6)
         if lat is None or lon is None:
@@ -190,6 +215,7 @@ def main():
         "status": status.werte,
         "bundesland": bundesland.werte,
         "anlagen": zeilen,
+        "abgebaut": abgebaut,  # MaStR-Nummer -> Datum der endgültigen Stilllegung
     }
     args.ausgabe.parent.mkdir(parents=True, exist_ok=True)
     with open(args.ausgabe, "w", encoding="utf-8") as f:
@@ -197,6 +223,7 @@ def main():
 
     groesse = args.ausgabe.stat().st_size / 1e6
     print(f"{args.ausgabe}  ({groesse:.1f} MB)")
+    print(f"  abgebaut seit {ABGEBAUT_SEIT}: {len(abgebaut)}")
     for k, v in zaehler.items():
         print(f"  {k:>18}: {v:>7}")
     i = {f: n for n, f in enumerate(FELDER)}

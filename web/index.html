@@ -55,14 +55,20 @@
       <div id="ziel-entdecker" class="entdecker" hidden></div>
       <div class="ziel-aktionen">
         <button id="btn-sammeln" class="knopf haupt">Sammeln</button>
+        <button id="btn-beruehren" class="knopf" hidden>🤚 Turm berührt</button>
         <button id="btn-naechste" class="knopf" hidden>Zur nächsten</button>
       </div>
       <div id="kompass-hinweis" class="leise klein" hidden>Kein Kompass: Der Pfeil zeigt relativ zu Norden (oben).</div>
+      <details id="ziel-kommentare" class="kommentare" hidden>
+        <summary><span>💬 Bewertungen</span><span id="km-schnitt" class="leise"></span></summary>
+        <div id="km-inhalt"></div>
+      </details>
     </div>
 
     <div class="map-wrap" id="map-wrap">
       <div id="map"></div>
       <button id="btn-vollbild" class="map-knopf oben" aria-label="Karte im Vollbild">⤢</button>
+      <button id="btn-funde" class="map-knopf oben zwei" aria-label="Meine Funde auf der Karte" aria-pressed="false" title="Meine Funde">★</button>
       <button id="btn-zentrieren" class="map-knopf" aria-label="Auf meinen Standort zentrieren">◎</button>
       <button id="map-info" class="map-info" aria-label="Details anzeigen">
         <svg viewBox="0 0 100 100" class="mini-kompass" aria-hidden="true">
@@ -97,14 +103,46 @@
   <!-- ============ Sammelheft ============ -->
   <section id="view-heft" class="view">
     <div class="zahlen" id="heft-zahlen"></div>
+    <div id="heft-abgebaut" class="karte zeitzeuge" hidden></div>
 
     <h3 class="abschnitt">Abzeichen</h3>
     <div class="abzeichen" id="heft-abzeichen"></div>
+    <p class="leise klein">Tippe auf ein Abzeichen, um zu sehen, welche Anlagen dafür gezählt haben.</p>
 
-    <h3 class="abschnitt">Hersteller &amp; Modelle</h3>
+    <h3 class="abschnitt">Verlauf</h3>
+    <div class="karte verlauf">
+      <div class="filter verlauf-filter">
+        <div class="chips" id="verlauf-art">
+          <button data-art="monat" class="an">Monate</button>
+          <button data-art="jahr">Jahre</button>
+        </div>
+        <div class="chips" id="verlauf-wert">
+          <button data-wert="anlagen" class="an">Anlagen</button>
+          <button data-wert="modelle">Modelle</button>
+          <button data-wert="kw">MW</button>
+        </div>
+      </div>
+      <div id="verlauf-max" class="leise klein verlauf-max"></div>
+      <div id="verlauf-balken" class="verlauf-balken"></div>
+      <div id="verlauf-auswertung" class="verlauf-auswertung"></div>
+    </div>
+
+    <h3 class="abschnitt">Hersteller komplett</h3>
+    <p class="leise klein">Aktive Modelle = mindestens 10 Anlagen an Land in Betrieb. Antippen zeigt, welche dir noch fehlen.</p>
     <div id="heft-marken"></div>
 
+    <h3 class="abschnitt">Quartette</h3>
+    <div id="heft-quartette" class="quartette"></div>
+
     <h3 class="abschnitt">Meine Funde</h3>
+    <div class="filter funde-kopf">
+      <div class="chips" id="funde-filter">
+        <button data-f="alle" class="an">Alle <small></small></button>
+        <button data-f="beruehrt">🤚 Berührt <small></small></button>
+        <button data-f="abgebaut">🪦 Abgebaut <small></small></button>
+      </div>
+      <button id="btn-funde-karte" class="knopf klein-knopf" hidden>Auf Karte</button>
+    </div>
     <ul class="liste" id="heft-funde"></ul>
 
     <h3 class="abschnitt">Sicherung</h3>
@@ -138,20 +176,28 @@
         </div>
         <div class="ich-punkte"><b id="rang-punkte">–</b><span>Punkte</span></div>
       </div>
+      <label class="schalter global-schalter"><input type="checkbox" id="chk-global"> In der globalen Rangliste zeigen</label>
       <div id="rang-warte" class="hinweis" hidden></div>
 
-      <h3 class="abschnitt">Meine Gruppen</h3>
+      <h3 class="abschnitt">Rangliste</h3>
       <div class="chips umbruch" id="rang-gruppen"></div>
       <div id="rang-keine" class="karte leise">Du bist noch in keiner Gruppe. Erstelle eine oder tritt mit einem Einladungscode bei.</div>
 
       <div id="rang-gruppe" hidden>
-        <div class="gruppe-kopf">
+        <div class="gruppe-kopf" id="rang-gruppe-kopf">
           <span class="leise">Einladungscode <b id="rang-code" class="code"></b></span>
           <button id="btn-teilen" class="knopf">Einladen</button>
         </div>
+        <div id="rang-global-hinweis" class="hinweis" hidden></div>
         <div class="chips" id="rang-zeitraum">
-          <button data-z="gesamt" class="an">Gesamt</button>
-          <button data-z="monat">Dieser Monat</button>
+          <button data-z="monat" class="an">Monat</button>
+          <button data-z="jahr">Jahr</button>
+          <button data-z="gesamt">Gesamt</button>
+        </div>
+        <div class="periode" id="rang-periode">
+          <button id="btn-periode-zurueck" class="periode-knopf" aria-label="Früherer Zeitraum">‹</button>
+          <b id="rang-periode-name"></b>
+          <button id="btn-periode-vor" class="periode-knopf" aria-label="Späterer Zeitraum">›</button>
         </div>
         <ol id="rang-liste" class="liste rangliste"></ol>
         <button id="btn-verlassen" class="link-knopf">Gruppe verlassen</button>
@@ -176,6 +222,7 @@
         <div><span>Neue Marke</span><b>+10</b></div>
         <div><span>Seltenes Modell (≤ 20 in Deutschland)</span><b>+20</b></div>
         <div><span>Als Erste/r überhaupt gesammelt</span><b>+3</b></div>
+        <div><span>Turm berührt (unter 20 m)</span><b>+2</b></div>
         <p class="leise klein">Gewertet werden Funde, die du nach der Anmeldung sammelst. Der Server prüft, dass du wirklich unter 300 m an der Anlage warst – deine Position wird dabei nicht gespeichert.</p>
       </div>
       <button id="btn-konto-loeschen" class="link-knopf">Konto löschen</button>
@@ -189,6 +236,11 @@
   <button data-view="heft"><span>📒</span>Sammelheft</button>
   <button data-view="rang" id="tab-rang" hidden><span>🏆</span>Rangliste</button>
 </nav>
+
+<dialog id="sheet" class="sheet" aria-labelledby="sheet-titel">
+  <div class="sheet-kopf"><h3 id="sheet-titel"></h3><button id="sheet-zu" class="sheet-zu" aria-label="Schließen">✕</button></div>
+  <div id="sheet-inhalt"></div>
+</dialog>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 

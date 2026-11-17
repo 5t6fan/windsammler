@@ -3,7 +3,9 @@
 --
 -- Datenschutz: Gespeichert werden nur Spielername, gesammelte Anlagen und Zeitpunkte.
 -- Die Position des Handys wird beim Sammeln geprüft, aber nicht gespeichert.
--- Andere Nutzer sehen Namen und Punkte nur innerhalb gemeinsamer Gruppen.
+-- Andere Nutzer sehen Namen und Punkte nur innerhalb gemeinsamer Gruppen – in der globalen
+-- Rangliste nur, wer das selbst einschaltet (profile.global). Kommentare zu Anlagen sehen
+-- alle angemeldeten Spieler mit dem Spielernamen des Verfassers.
 
 -- ---------------------------------------------------------------- Tabellen
 
@@ -49,6 +51,31 @@ create table if not exists public.funde (
   primary key (nutzer, anlage)
 );
 
+-- Turm berührt (unter 20 m an der Anlage, gibt Bonuspunkte)
+alter table public.funde add column if not exists beruehrt timestamptz;
+-- In der globalen Rangliste sichtbar (freiwillig, Standard: aus)
+alter table public.profile add column if not exists global boolean not null default false;
+
+-- Bewertungen/Kommentare: eine pro Spieler und Anlage, nur für selbst gesammelte Anlagen
+create table if not exists public.kommentare (
+  id      uuid primary key default gen_random_uuid(),
+  nutzer  uuid not null references public.profile (id) on delete cascade,
+  anlage  text not null references public.anlagen (id),
+  sterne  smallint not null check (sterne between 1 and 5),
+  text    text not null default '' check (char_length(text) <= 500),
+  zeit    timestamptz not null default now(),
+  unique (nutzer, anlage)
+);
+create index if not exists kommentare_anlage on public.kommentare (anlage, zeit desc);
+
+-- Meldungen unangemessener Kommentare; ab 3 Meldungen wird ein Kommentar ausgeblendet
+create table if not exists public.meldungen (
+  kommentar uuid not null references public.kommentare (id) on delete cascade,
+  nutzer    uuid not null references public.profile (id) on delete cascade,
+  zeit      timestamptz not null default now(),
+  primary key (kommentar, nutzer)
+);
+
 -- Fehlgeschlagene Beitrittsversuche (gegen Durchprobieren von Einladungscodes)
 create table if not exists public.beitritt_fehler (
   nutzer uuid not null references auth.users (id) on delete cascade,
@@ -70,6 +97,8 @@ alter table public.gruppen    enable row level security;
 alter table public.mitglieder enable row level security;
 alter table public.funde      enable row level security;
 alter table public.beitritt_fehler enable row level security;
+alter table public.kommentare enable row level security;
+alter table public.meldungen  enable row level security;
 
 drop policy if exists profil_lesen on public.profile;
 drop policy if exists profil_anlegen on public.profile;
@@ -164,6 +193,29 @@ begin
     'selten', v_modell and a.selten, 'erstentdecker', v_erst);
 end $$;
 
+-- Turm berührt: unter 20 m. Noch nicht gesammelte Anlagen werden dabei mitgesammelt.
+create or replace function public.beruehren(p_anlage text, p_lat float8, p_lon float8, p_zeit timestamptz default null)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid  uuid := public._nutzer();
+  v_zeit timestamptz := least(now(), greatest(coalesce(p_zeit, now()), now() - interval '48 hours'));
+  a      public.anlagen;
+  r      jsonb := jsonb_build_object('punkte', 0);
+begin
+  select * into a from public.anlagen where id = p_anlage;
+  if not found then raise exception 'Unbekannte Anlage'; end if;
+  if public.distanz_m(p_lat, p_lon, a.lat, a.lon) > 20 then raise exception 'Zum Berühren näher als 20 m herangehen'; end if;
+  if not exists (select 1 from public.funde where nutzer = v_uid and anlage = p_anlage) then
+    r := public.sammeln(p_anlage, p_lat, p_lon, p_zeit);
+  end if;
+  update public.funde set beruehrt = v_zeit, punkte = punkte + 2
+   where nutzer = v_uid and anlage = p_anlage and beruehrt is null;
+  if found then
+    r := jsonb_set(r, '{punkte}', to_jsonb(coalesce((r->>'punkte')::int, 0) + 2));
+  end if;
+  return r || jsonb_build_object('beruehrt', true);
+end $$;
+
 create or replace function public.mein_stand()
 returns jsonb language sql stable security definer set search_path = '' as $$
   select jsonb_build_object('punkte', coalesce(sum(punkte), 0), 'anlagen', count(*))
@@ -253,9 +305,11 @@ language sql stable security definer set search_path = '' as $$
    order by m.beigetreten
 $$;
 
--- p_seit = null: Gesamtwertung, sonst nur Funde ab diesem Zeitpunkt
-create or replace function public.rangliste(p_gruppe uuid, p_seit timestamptz default null)
-returns table (name text, punkte bigint, anlagen bigint, modelle bigint, ich boolean)
+-- Zeitraum [p_seit, p_bis); null = offen. Beides null: Gesamtwertung
+drop function if exists public.rangliste(uuid, timestamptz);
+drop function if exists public.rangliste(uuid, timestamptz, timestamptz);
+create or replace function public.rangliste(p_gruppe uuid, p_seit timestamptz default null, p_bis timestamptz default null)
+returns table (name text, punkte bigint, anlagen bigint, modelle bigint, beruehrt bigint, ich boolean)
 language plpgsql stable security definer set search_path = '' as $$
 begin
   if not exists (select 1 from public.mitglieder where gruppe = p_gruppe and nutzer = auth.uid()) then
@@ -266,14 +320,94 @@ begin
            coalesce(sum(f.punkte), 0)::bigint,
            count(f.anlage),
            count(distinct (a.marke, a.modell)) filter (where a.modell is not null),
+           count(f.beruehrt),
            p.id = auth.uid()
       from public.mitglieder m
       join public.profile p on p.id = m.nutzer
-      left join public.funde f on f.nutzer = m.nutzer and (p_seit is null or f.zeit >= p_seit)
+      left join public.funde f on f.nutzer = m.nutzer
+            and (p_seit is null or f.zeit >= p_seit) and (p_bis is null or f.zeit < p_bis)
       left join public.anlagen a on a.id = f.anlage
      where m.gruppe = p_gruppe
      group by p.id, p.name
      order by 2 desc, 3 desc, p.name;
+end $$;
+
+-- Globale Rangliste: alle, die sich freigeschaltet haben (Top 100), dazu immer man selbst
+drop function if exists public.rangliste_global(timestamptz, timestamptz);
+create or replace function public.rangliste_global(p_seit timestamptz default null, p_bis timestamptz default null)
+returns table (platz bigint, name text, punkte bigint, anlagen bigint, modelle bigint, beruehrt bigint, ich boolean, sichtbar boolean)
+language sql stable security definer set search_path = '' as $$
+  with w as (
+    select p.id, p.name, p.global,
+           coalesce(sum(f.punkte), 0)::bigint as punkte,
+           count(f.anlage) as anlagen,
+           count(distinct (a.marke, a.modell)) filter (where a.modell is not null) as modelle,
+           count(f.beruehrt) as beruehrt
+      from public.profile p
+      left join public.funde f on f.nutzer = p.id
+            and (p_seit is null or f.zeit >= p_seit) and (p_bis is null or f.zeit < p_bis)
+      left join public.anlagen a on a.id = f.anlage
+     where auth.uid() is not null and (p.global or p.id = auth.uid())
+     group by p.id, p.name, p.global
+  ), r as (
+    select w.*, rank() over (order by w.punkte desc) as platz,
+           row_number() over (order by w.punkte desc, w.anlagen desc, w.name) as nr
+      from w where w.punkte > 0 or w.id = auth.uid()
+  )
+  select r.platz, r.name, r.punkte, r.anlagen, r.modelle, r.beruehrt, r.id = auth.uid(), r.global
+    from r where r.nr <= 100 or r.id = auth.uid()
+   order by r.nr
+$$;
+
+-- ---------------------------------------------------------------- Kommentare
+
+-- Kommentare zu einer Anlage; ab 3 Meldungen sieht einen Kommentar nur noch der Verfasser
+create or replace function public.kommentare_lesen(p_anlage text)
+returns table (id uuid, name text, sterne smallint, text text, zeit timestamptz, ich boolean, gemeldet boolean)
+language sql stable security definer set search_path = '' as $$
+  select k.id, p.name, k.sterne, k.text, k.zeit, k.nutzer = auth.uid(),
+         exists (select 1 from public.meldungen m where m.kommentar = k.id and m.nutzer = auth.uid())
+    from public.kommentare k join public.profile p on p.id = k.nutzer
+   where k.anlage = p_anlage
+     and auth.uid() is not null
+     and (k.nutzer = auth.uid() or (select count(*) from public.meldungen m where m.kommentar = k.id) < 3)
+   order by k.nutzer = auth.uid() desc, k.zeit desc
+   limit 100
+$$;
+
+create or replace function public.kommentar_speichern(p_anlage text, p_sterne int, p_text text)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid  uuid := public._nutzer();
+  v_text text := btrim(coalesce(p_text, ''));
+begin
+  if not exists (select 1 from public.funde where nutzer = v_uid and anlage = p_anlage) then
+    raise exception 'Bewerten kannst du nur Anlagen, die du mit deinem Konto gesammelt hast';
+  end if;
+  if p_sterne is null or p_sterne not between 1 and 5 then raise exception 'Bitte 1 bis 5 Sterne vergeben'; end if;
+  if char_length(v_text) > 500 then raise exception 'Höchstens 500 Zeichen'; end if;
+  if (select count(*) from public.kommentare where nutzer = v_uid and zeit > now() - interval '24 hours') >= 30 then
+    raise exception 'Tageslimit für Kommentare erreicht';
+  end if;
+  -- Meldungen bleiben beim Bearbeiten erhalten, damit sich ein ausgeblendeter Kommentar nicht freischreiben lässt
+  insert into public.kommentare (nutzer, anlage, sterne, text)
+  values (v_uid, p_anlage, p_sterne, v_text)
+  on conflict (nutzer, anlage) do update set sterne = excluded.sterne, text = excluded.text, zeit = now();
+end $$;
+
+create or replace function public.kommentar_loeschen(p_anlage text)
+returns void language sql security definer set search_path = '' as $$
+  delete from public.kommentare where nutzer = auth.uid() and anlage = p_anlage
+$$;
+
+create or replace function public.kommentar_melden(p_kommentar uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+declare v_uid uuid := public._nutzer();
+begin
+  if exists (select 1 from public.kommentare where id = p_kommentar and nutzer = v_uid) then
+    raise exception 'Eigene Kommentare kannst du löschen statt melden';
+  end if;
+  insert into public.meldungen (kommentar, nutzer) values (p_kommentar, v_uid) on conflict do nothing;
 end $$;
 
 -- ---------------------------------------------------------------- Konto löschen (DSGVO)
@@ -320,6 +454,12 @@ grant execute on function
   public.gruppe_beitreten(text),
   public.gruppe_verlassen(uuid),
   public.meine_gruppen(),
-  public.rangliste(uuid, timestamptz),
+  public.rangliste(uuid, timestamptz, timestamptz),
+  public.rangliste_global(timestamptz, timestamptz),
+  public.beruehren(text, float8, float8, timestamptz),
+  public.kommentare_lesen(text),
+  public.kommentar_speichern(text, int, text),
+  public.kommentar_loeschen(text),
+  public.kommentar_melden(uuid),
   public.konto_loeschen()
 to authenticated;

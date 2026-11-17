@@ -1,5 +1,6 @@
 'use strict';
-/* Online-Teil: Spielerprofil, Gruppen mit Einladungscode, Rangliste (Supabase).
+/* Online-Teil: Spielerprofil, Gruppen mit Einladungscode, Ranglisten (Gruppe/global, Monat/Jahr/Gesamt),
+ * Bewertungen zu Anlagen (Supabase).
  * Ohne Eintrag in config.js bleibt die App rein lokal und der Rangliste-Tab ist ausgeblendet.
  * Nutzt Hilfsfunktionen aus app.js ($, esc, toast, fmt0, datum).
  */
@@ -10,11 +11,15 @@ const Online = (() => {
   const WARTESCHLANGE = 'windsammler.warteschlange';
   const GRUPPE_GEWAEHLT = 'windsammler.gruppe';
 
-  let profil = null;          // { id, name }
+  const GLOBAL = 'global';
+
+  let profil = null;          // { id, name, global }
   let gruppen = [];
-  let gruppe = null;          // gewählte Gruppen-ID
-  let zeitraum = 'gesamt';
+  let gruppe = null;          // gewählte Gruppen-ID oder GLOBAL
+  let zeitraum = 'monat';     // monat | jahr | gesamt
+  let versatz = 0;            // 0 = aktueller Monat/aktuelles Jahr, 1 = davor …
   const entdeckerCache = new Map();
+  const kommentarCache = new Map();
 
   /* ---------- Hilfen ---------- */
 
@@ -52,7 +57,7 @@ const Online = (() => {
   }
 
   async function ladeProfil(uid) {
-    const { data, error } = await sb.from('profile').select('id,name').eq('id', uid).maybeSingle();
+    const { data, error } = await sb.from('profile').select('id,name,global').eq('id', uid).maybeSingle();
     if (error) throw error;
     profil = data;
   }
@@ -107,7 +112,7 @@ const Online = (() => {
       }
       const { error } = await sb.from('profile').upsert({ id: session.user.id, name });
       if (error) throw error;
-      profil = { id: session.user.id, name };
+      profil = { id: session.user.id, name, global: !!(profil && profil.global) };
       toast('Willkommen, ' + name + '!');
       await ladeGruppen();
     } catch (e) {
@@ -142,14 +147,18 @@ const Online = (() => {
   /* ---------- Sammeln ---------- */
 
   // Wird von app.js nach einem lokalen Fund aufgerufen.
-  async function sammeln(id, lat, lon) {
+  const sammeln = (id, lat, lon) => senden('sammeln', id, lat, lon);
+  // Turm berührt (unter 20 m) – sammelt die Anlage mit, falls nötig
+  const beruehren = (id, lat, lon) => senden('beruehren', id, lat, lon);
+
+  async function senden(art, id, lat, lon) {
     if (!profil) return null;
     try {
-      return await rpc('sammeln', { p_anlage: id, p_lat: lat, p_lon: lon });
+      return await rpc(art, { p_anlage: id, p_lat: lat, p_lon: lon });
     } catch (e) {
       if (netzfehler(e)) {
         const q = lies(WARTESCHLANGE, []);
-        q.push({ id, lat, lon, zeit: new Date().toISOString() });
+        q.push({ art, id, lat, lon, zeit: new Date().toISOString() });
         schreib(WARTESCHLANGE, q);
         renderWarte();
         return { wartend: true };
@@ -157,6 +166,7 @@ const Online = (() => {
       return { fehler: fehlertext(e) };
     } finally {
       entdeckerCache.delete(id);
+      kommentarCache.delete(id);
     }
   }
 
@@ -170,7 +180,7 @@ const Online = (() => {
     let punkte = 0;
     for (const f of q) {
       try {
-        const r = await rpc('sammeln', { p_anlage: f.id, p_lat: f.lat, p_lon: f.lon, p_zeit: f.zeit });
+        const r = await rpc(f.art || 'sammeln', { p_anlage: f.id, p_lat: f.lat, p_lon: f.lon, p_zeit: f.zeit });
         punkte += (r && r.punkte) || 0;
       } catch (e) {
         if (netzfehler(e)) rest.push(f);  // später erneut; andere Fehler verwerfen
@@ -209,7 +219,7 @@ const Online = (() => {
     } catch (e) {
       return toast('Gruppen nicht ladbar: ' + fehlertext(e));
     }
-    if (!gruppen.some((g) => g.id === gruppe)) gruppe = gruppen[0] ? gruppen[0].id : null;
+    if (gruppe !== GLOBAL && !gruppen.some((g) => g.id === gruppe)) gruppe = gruppen[0] ? gruppen[0].id : GLOBAL;
     schreib(GRUPPE_GEWAEHLT, gruppe);
   }
 
@@ -262,6 +272,32 @@ const Online = (() => {
 
   /* ---------- Darstellung ---------- */
 
+  // Zeitraum [seit, bis) für die gewählte Auswertung
+  function periode() {
+    const j = new Date();
+    if (zeitraum === 'monat') {
+      const von = new Date(j.getFullYear(), j.getMonth() - versatz, 1);
+      const bis = new Date(von.getFullYear(), von.getMonth() + 1, 1);
+      return { seit: von.toISOString(), bis: bis.toISOString(), name: von.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }) };
+    }
+    if (zeitraum === 'jahr') {
+      const jahr = j.getFullYear() - versatz;
+      return { seit: new Date(jahr, 0, 1).toISOString(), bis: new Date(jahr + 1, 0, 1).toISOString(), name: 'Jahr ' + jahr };
+    }
+    return { seit: null, bis: null, name: 'Seit Beginn' };
+  }
+
+  function zeile(z, platz) {
+    const medaille = z.punkte > 0 ? ({ 1: '🥇', 2: '🥈', 3: '🥉' }[platz] || platz) : platz;
+    const unter = [fmt0.format(z.anlagen) + ' Anlagen', fmt0.format(z.modelle) + ' Modelle'];
+    if (z.beruehrt) unter.push(fmt0.format(z.beruehrt) + ' 🤚');
+    return '<li' + (z.ich ? ' class="ich"' : '') + '><span class="platz">' + medaille + '</span>' +
+      '<span class="li-text"><div class="li-titel">' + esc(z.name) + (z.ich ? ' (du)' : '') + '</div>' +
+      '<div class="li-unter">' + unter.join(' · ') + '</div></span>' +
+      '<span class="li-dist">' + fmt0.format(z.punkte) + '<small>Punkte</small></span></li>';
+  }
+
+  let ladeNr = 0;
   async function ladeRangliste() {
     if (!profil) return;
     try {
@@ -272,21 +308,40 @@ const Online = (() => {
 
     const ol = $('#rang-liste');
     if (!gruppe) { ol.innerHTML = ''; return; }
-    const seit = zeitraum === 'monat' ? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString() : null;
+    const p = periode();
+    $('#rang-periode').hidden = zeitraum === 'gesamt';
+    $('#rang-periode-name').textContent = p.name;
+    $('#btn-periode-vor').disabled = versatz === 0;
+    const nr = ++ladeNr;
     try {
-      const zeilen = await rpc('rangliste', { p_gruppe: gruppe, p_seit: seit });
-      let platz = 0, vorher = null;
-      ol.innerHTML = zeilen.map((z, i) => {
-        if (z.punkte !== vorher) { platz = i + 1; vorher = z.punkte; }
-        const medaille = z.punkte > 0 ? ({ 1: '🥇', 2: '🥈', 3: '🥉' }[platz] || platz) : platz;
-        return '<li' + (z.ich ? ' class="ich"' : '') + '><span class="platz">' + medaille + '</span>' +
-          '<span class="li-text"><div class="li-titel">' + esc(z.name) + (z.ich ? ' (du)' : '') + '</div>' +
-          '<div class="li-unter">' + fmt0.format(z.anlagen) + ' Anlagen · ' + fmt0.format(z.modelle) + ' Modelle</div></span>' +
-          '<span class="li-dist">' + fmt0.format(z.punkte) + '<small>Punkte</small></span></li>';
-      }).join('');
+      let html;
+      if (gruppe === GLOBAL) {
+        const zeilen = await rpc('rangliste_global', { p_seit: p.seit, p_bis: p.bis });
+        html = zeilen.map((z) => zeile(z, z.platz)).join('');
+        if (!zeilen.some((z) => !z.ich)) html += '<li class="leer">Noch niemand sonst ist in diesem Zeitraum global sichtbar.</li>';
+      } else {
+        const zeilen = await rpc('rangliste', { p_gruppe: gruppe, p_seit: p.seit, p_bis: p.bis });
+        let platz = 0, vorher = null;
+        html = zeilen.map((z, i) => {
+          if (z.punkte !== vorher) { platz = i + 1; vorher = z.punkte; }
+          return zeile(z, platz);
+        }).join('');
+      }
+      if (nr === ladeNr) ol.innerHTML = html;
     } catch (e) {
-      ol.innerHTML = '<li class="leer">Rangliste nicht ladbar (' + esc(fehlertext(e)) + ')</li>';
+      if (nr === ladeNr) ol.innerHTML = '<li class="leer">Rangliste nicht ladbar (' + esc(fehlertext(e)) + ')</li>';
     }
+  }
+
+  async function globalSetzen(an) {
+    const { error } = await sb.from('profile').update({ global: an }).eq('id', profil.id);
+    if (error) {
+      $('#chk-global').checked = !an;
+      return toast('Ändern fehlgeschlagen: ' + fehlertext(error));
+    }
+    profil.global = an;
+    toast(an ? 'Du bist jetzt in der globalen Rangliste sichtbar' : 'Du bist in der globalen Rangliste nicht mehr sichtbar');
+    render();
   }
 
   function renderWarte() {
@@ -308,15 +363,22 @@ const Online = (() => {
       return;
     }
     $('#rang-name').textContent = profil.name;
+    $('#chk-global').checked = !!profil.global;
     renderWarte();
 
-    $('#rang-gruppen').innerHTML = gruppen.map((g) =>
-      '<button data-g="' + esc(g.id) + '"' + (g.id === gruppe ? ' class="an"' : '') + '>' + esc(g.name) +
-      ' · ' + g.mitglieder + '</button>').join('');
+    const global = gruppe === GLOBAL;
+    $('#rang-gruppen').innerHTML = '<button data-g="' + GLOBAL + '"' + (global ? ' class="an"' : '') + '>🌍 Global</button>' +
+      gruppen.map((g) =>
+        '<button data-g="' + esc(g.id) + '"' + (g.id === gruppe ? ' class="an"' : '') + '>' + esc(g.name) +
+        ' · ' + g.mitglieder + '</button>').join('');
     const g = gruppen.find((x) => x.id === gruppe);
-    $('#rang-gruppe').hidden = !g;
-    $('#rang-keine').hidden = !!g;
+    $('#rang-gruppe').hidden = !g && !global;
+    $('#rang-keine').hidden = !!gruppen.length;
+    $('#rang-gruppe-kopf').hidden = !g;
+    $('#btn-verlassen').hidden = !g;
     if (g) $('#rang-code').textContent = g.code;
+    $('#rang-global-hinweis').hidden = !global || profil.global;
+    $('#rang-global-hinweis').textContent = 'Die globale Rangliste zeigt alle, die sich freigeschaltet haben. Du selbst bist dort nur für dich sichtbar – schalte oben „In der globalen Rangliste zeigen“ ein, damit andere dich sehen.';
     ladeRangliste();
   }
 
@@ -326,6 +388,111 @@ const Online = (() => {
     await ladeGruppen();
     render();
     sendeWarteschlange();
+  }
+
+  /* ---------- Bewertungen ----------
+   * Lesen: alle angemeldeten Spieler. Schreiben: nur wer die Anlage mit seinem Konto gesammelt hat
+   * (prüft der Server). Eine Bewertung pro Spieler und Anlage, ab 3 Meldungen ausgeblendet. */
+
+  let km = { id: null, gesammelt: false, zeilen: [], sterne: 0 };
+
+  async function zeigeKommentare(id, gesammelt) {
+    const box = $('#ziel-kommentare');
+    if (!aktiv || !profil) { box.hidden = true; return; }
+    box.hidden = false;
+    // Nur bei Anlagen- oder Statuswechsel neu aufbauen – sonst würde jede GPS-Meldung das Eingabefeld leeren
+    if (km.id === id && km.gesammelt === gesammelt) return;
+    const neueAnlage = km.id !== id;
+    km = { id, gesammelt, zeilen: neueAnlage ? [] : km.zeilen, sterne: 0 };
+    if (neueAnlage) {
+      box.open = false;
+      $('#km-schnitt').textContent = '';
+      $('#km-inhalt').innerHTML = '<p class="leise klein">Lade …</p>';
+    }
+    await ladeKommentare(id);
+  }
+
+  async function ladeKommentare(id, neu) {
+    if (neu) kommentarCache.delete(id);
+    let zeilen = kommentarCache.get(id);
+    if (!zeilen) {
+      try {
+        zeilen = await rpc('kommentare_lesen', { p_anlage: id }) || [];
+        kommentarCache.set(id, zeilen);
+      } catch (e) {
+        if (km.id === id) $('#km-inhalt').innerHTML = '<p class="leise klein">Bewertungen nicht ladbar (' + esc(fehlertext(e)) + ')</p>';
+        return;
+      }
+    }
+    if (km.id !== id) return;
+    km.zeilen = zeilen;
+    const eigene = zeilen.find((z) => z.ich);
+    km.sterne = eigene ? eigene.sterne : 0;
+    renderKommentare();
+  }
+
+  const sterneText = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+
+  function renderKommentare() {
+    const z = km.zeilen;
+    const schnitt = z.length ? z.reduce((s, x) => s + x.sterne, 0) / z.length : 0;
+    $('#km-schnitt').textContent = z.length ? '★ ' + schnitt.toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' · ' + z.length : 'noch keine';
+    const eigene = z.find((x) => x.ich);
+    const liste = z.map((x) =>
+      '<div class="km' + (x.ich ? ' ich' : '') + '"><div class="km-kopf"><b>' + esc(x.name) + (x.ich ? ' (du)' : '') + '</b>' +
+      '<span class="km-sterne" aria-label="' + x.sterne + ' von 5 Sternen">' + sterneText(x.sterne) + '</span></div>' +
+      (x.text ? '<p>' + esc(x.text) + '</p>' : '') +
+      '<div class="km-fuss leise klein">' + datum(Date.parse(x.zeit)) +
+      (x.ich ? '' : x.gemeldet ? ' · gemeldet' : ' · <button class="link-knopf km-melden" data-melden="' + esc(x.id) + '">Melden</button>') +
+      '</div></div>').join('');
+    const formular = km.gesammelt
+      ? '<div class="km-form"><div class="km-wahl" role="radiogroup" aria-label="Sterne">' +
+        [1, 2, 3, 4, 5].map((n) => '<button data-stern="' + n + '" role="radio" aria-checked="' + (n === km.sterne) + '" aria-label="' + n + ' Sterne"' +
+          (n <= km.sterne ? ' class="an"' : '') + '>★</button>').join('') + '</div>' +
+        '<textarea id="km-text" class="eingabe km-text" maxlength="500" rows="3" placeholder="Wie war’s an dieser Anlage? (optional)">' +
+        esc(eigene ? eigene.text : '') + '</textarea>' +
+        '<div class="ziel-aktionen"><button class="knopf haupt" data-aktion="speichern">' + (eigene ? 'Ändern' : 'Bewerten') + '</button>' +
+        (eigene ? '<button class="knopf" data-aktion="loeschen">Löschen</button>' : '') + '</div></div>'
+      : '<p class="leise klein">Bewerten kannst du, sobald du die Anlage gesammelt hast.</p>';
+    $('#km-inhalt').innerHTML = (liste || '<p class="leise klein">Noch keine Bewertungen – sei die/der Erste.</p>') + formular;
+  }
+
+  async function kommentarKlick(e) {
+    const stern = e.target.closest('button[data-stern]');
+    if (stern) {
+      km.sterne = +stern.dataset.stern;
+      document.querySelectorAll('#km-inhalt [data-stern]').forEach((b) => {
+        b.classList.toggle('an', +b.dataset.stern <= km.sterne);
+        b.setAttribute('aria-checked', +b.dataset.stern === km.sterne);
+      });
+      return;
+    }
+    const id = km.id;
+    const melden = e.target.closest('button[data-melden]');
+    if (melden) {
+      if (!confirm('Diesen Kommentar als unangemessen melden?')) return;
+      try {
+        await rpc('kommentar_melden', { p_kommentar: melden.dataset.melden });
+        toast('Danke, gemeldet');
+      } catch (x) { return toast(fehlertext(x)); }
+      return ladeKommentare(id, true);
+    }
+    const knopf = e.target.closest('button[data-aktion]');
+    if (!knopf) return;
+    try {
+      if (knopf.dataset.aktion === 'speichern') {
+        if (!km.sterne) return toast('Bitte 1 bis 5 Sterne wählen');
+        await rpc('kommentar_speichern', { p_anlage: id, p_sterne: km.sterne, p_text: $('#km-text').value });
+        toast('Bewertung gespeichert');
+      } else {
+        if (!confirm('Deine Bewertung löschen?')) return;
+        await rpc('kommentar_loeschen', { p_anlage: id });
+        toast('Bewertung gelöscht');
+      }
+    } catch (x) {
+      return toast(fehlertext(x));
+    }
+    ladeKommentare(id, true);
   }
 
   /* ---------- Ereignisse ---------- */
@@ -350,11 +517,16 @@ const Online = (() => {
       const b = e.target.closest('button[data-z]');
       if (!b) return;
       zeitraum = b.dataset.z;
+      versatz = 0;
       document.querySelectorAll('#rang-zeitraum button').forEach((x) => x.classList.toggle('an', x === b));
       ladeRangliste();
     });
+    $('#btn-periode-zurueck').addEventListener('click', () => { versatz++; ladeRangliste(); });
+    $('#btn-periode-vor').addEventListener('click', () => { if (versatz > 0) { versatz--; ladeRangliste(); } });
+    $('#chk-global').addEventListener('change', (e) => globalSetzen(e.target.checked));
+    $('#km-inhalt').addEventListener('click', kommentarKlick);
     init();
   }
 
-  return { aktiv, angemeldet: () => !!profil, sammeln, entdecker, zeigen };
+  return { aktiv, angemeldet: () => !!profil, sammeln, beruehren, entdecker, zeigen, zeigeKommentare };
 })();

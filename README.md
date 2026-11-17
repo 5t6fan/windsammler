@@ -7,6 +7,7 @@ Daten: Marktstammdatenregister (Bundesnetzagentur), Datenlizenz Deutschland – 
 
 ```
 pipeline/build_wind.py   MaStR-XML -> web/data/wind.json (Windanlagen, Marken/Modelle vereinheitlicht)
+                         + Liste kürzlich endgültig stillgelegter Anlagen ("abgebaut" im Sammelheft)
 pipeline/make_icons.py   erzeugt die PNG-App-Icons
 pipeline/rohdaten/       EinheitenWind.xml, Katalogwerte.xml aus dem Gesamtdatenexport (nicht im Git)
 web/                     die App: index.html, app.js, style.css, sw.js (offline), manifest

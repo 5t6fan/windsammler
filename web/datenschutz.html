@@ -30,9 +30,10 @@
     <b>Kurz gesagt</b>
     <ul>
       <li>Kein Tracking, keine Werbung, keine Analyse-Tools.</li>
-      <li>Dein Standort wird auf deinem Gerät verarbeitet. Nur beim Sammeln mit Rangliste wird er einmal zur Prüfung an den Server geschickt und <b>nicht gespeichert</b>.</li>
+      <li>Dein Standort wird auf deinem Gerät verarbeitet. Nur beim Sammeln oder Berühren mit Rangliste wird er einmal zur Prüfung an den Server geschickt und <b>nicht gespeichert</b>.</li>
       <li>Dein Sammelheft liegt nur auf deinem Gerät.</li>
-      <li>Für die Rangliste werden nur Spielername, gesammelte Anlagen, Zeitpunkte und Gruppen gespeichert. Du kannst dein Konto jederzeit in der App löschen.</li>
+      <li>Für die Rangliste werden nur Spielername, gesammelte Anlagen, Zeitpunkte, Gruppen und deine Bewertungen gespeichert. Du kannst dein Konto jederzeit in der App löschen.</li>
+      <li>In der globalen Rangliste erscheinst du nur, wenn du das selbst einschaltest.</li>
     </ul>
   </div>
 
@@ -57,9 +58,10 @@
   <p>Damit die App Entfernung und Richtung zu Windenergieanlagen anzeigen kann, fragt sie – erst nach deinem Tippen auf
     „Standort &amp; Kompass aktivieren“ – über die Systemabfrage deines Geräts nach Standort und Ausrichtung.
     Diese Daten werden <b>ausschließlich auf deinem Gerät</b> verarbeitet.</p>
-  <p>Nur wenn du für die Rangliste angemeldet bist und eine Anlage sammelst, wird deine aktuelle Position einmalig an den
-    Server übertragen, um zu prüfen, ob du dich wirklich in der Nähe (unter 300 m) befindest. Die Position wird dabei
-    <b>nicht gespeichert</b>; gespeichert wird nur, welche Anlage du wann gesammelt hast.</p>
+  <p>Nur wenn du für die Rangliste angemeldet bist und eine Anlage sammelst oder „Turm berührt“ antippst, wird deine aktuelle
+    Position einmalig an den Server übertragen, um zu prüfen, ob du dich wirklich in der Nähe (unter 300 m bzw. unter 20 m)
+    befindest. Die Position wird dabei <b>nicht gespeichert</b>; gespeichert wird nur, welche Anlage du wann gesammelt bzw.
+    berührt hast.</p>
   <p>Rechtsgrundlage ist deine Einwilligung (Art. 6 Abs. 1 lit. a DSGVO), die du über die Systemabfrage erteilst und jederzeit
     in den Einstellungen deines Geräts widerrufen kannst.</p>
 
@@ -88,18 +90,27 @@
   <ul>
     <li>eine zufällige Kennung deines Kontos (keine E-Mail-Adresse, kein Passwort, kein Klarname nötig)</li>
     <li>dein selbst gewählter Spielername</li>
-    <li>gesammelte Anlagen mit Zeitpunkt und Punkten</li>
+    <li>gesammelte Anlagen mit Zeitpunkt und Punkten, ggf. Zeitpunkt der Turmberührung</li>
+    <li>deine Bewertungen von Anlagen (Sterne, freiwilliger Text, Zeitpunkt) und von dir abgegebene Meldungen unangemessener Kommentare</li>
+    <li>ob du in der globalen Rangliste sichtbar sein möchtest</li>
     <li>deine Gruppenmitgliedschaften und von dir erstellte Gruppen</li>
     <li>fehlgeschlagene Beitrittsversuche mit falschem Einladungscode (Schutz vor Missbrauch, Löschung nach einem Tag)</li>
     <li>technische Protokolle von Supabase einschließlich IP-Adresse (Betrieb und Sicherheit des Dienstes)</li>
   </ul>
   <h3>Wer sieht was?</h3>
-  <p>Mitglieder deiner Gruppen sehen deinen Spielernamen, deine Punkte, die Anzahl deiner Anlagen und Modelle sowie bei einer
-    Anlage, ob du sie als Erste/r gesammelt hast (mit Datum). Personen außerhalb deiner Gruppen sehen nichts davon.</p>
+  <p>Mitglieder deiner Gruppen sehen deinen Spielernamen, deine Punkte, die Anzahl deiner Anlagen, Modelle und berührten Türme
+    sowie bei einer Anlage, ob du sie als Erste/r gesammelt hast (mit Datum).</p>
+  <p><b>Globale Rangliste:</b> Nur wenn du „In der globalen Rangliste zeigen“ einschaltest, sehen alle angemeldeten Spieler
+    deinen Spielernamen mit denselben Zahlen. Du kannst das jederzeit wieder ausschalten.</p>
+  <p><b>Bewertungen:</b> Deine Bewertungen einer Anlage (Sterne, Text, Datum) sehen alle angemeldeten Spieler zusammen mit
+    deinem Spielernamen – und damit auch, dass du diese Anlage besucht hast. Du kannst sie jederzeit ändern oder löschen.
+    Schreibe bitte keine persönlichen Daten in den Text. Kommentare, die von mehreren Spielern gemeldet werden, werden
+    automatisch ausgeblendet. Wer eine Meldung abgegeben hat, ist für andere nicht sichtbar.</p>
+  <p>Darüber hinaus sehen Personen außerhalb deiner Gruppen nichts von dir.</p>
   <h3>Rechtsgrundlage und Speicherdauer</h3>
   <p>Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Bereitstellung der von dir gewünschten Ranglisten-Funktion).
-    Die Daten werden gespeichert, bis du dein Konto löschst („Konto löschen“ im Tab Rangliste) – dann werden Profil, Funde
-    und Mitgliedschaften sofort entfernt. Angefangene Anmeldungen ohne Spielernamen werden nach einem Tag automatisch gelöscht.</p>
+    Die Daten werden gespeichert, bis du dein Konto löschst („Konto löschen“ im Tab Rangliste) – dann werden Profil, Funde,
+    Mitgliedschaften, Bewertungen und Meldungen sofort entfernt. Angefangene Anmeldungen ohne Spielernamen werden nach einem Tag automatisch gelöscht.</p>
   <p>Eine Übermittlung in die USA oder andere Drittländer kann im Rahmen von Support und Betrieb durch Supabase nicht
     ausgeschlossen werden; sie erfolgt auf Grundlage der EU-Standardvertragsklauseln. Weitere Informationen:
     <a href="https://supabase.com/privacy" rel="noopener">Datenschutzerklärung von Supabase</a>.</p>
