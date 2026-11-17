@@ -32,6 +32,11 @@ export function aktualisiereHeft(D, heft, anlage) {
 
 /* ---------------- Beschreibung der Zielanlage ---------------- */
 
+// „Rotordurchmesser 90 m bis 120 m“ statt nur „90 m bis 120 m“; Plattformen behalten ihren Namen
+function quartettLabel(q) {
+  return q.gruppe === 'Plattformen & Technik' ? q.name : q.text + ' ' + q.name.charAt(0).toLowerCase() + q.name.slice(1);
+}
+
 export function beschreibung(D, a) {
   const s = [];
   if (a.kw) s.push('Leistung ' + fmt.format(a.kw / 1000) + ' MW.');
@@ -56,7 +61,7 @@ export function beschreibung(D, a) {
   }
   const m = a.marke && D.katalog.get(a.marke + '|' + a.modell);
   const q = m ? QUARTETTE.filter((x) => x.test(m)) : [];
-  if (q.length) s.push('Quartette: ' + q.map((x) => x.name).join(', ') + '.');
+  if (q.length) s.push('Quartette: ' + q.map(quartettLabel).join(', ') + '.');
   return s.join(' ');
 }
 
@@ -191,6 +196,8 @@ export const ABZEICHEN = [
   { k: 'land3', ico: '🗺️', name: 'Grenzgänger', text: '3 Bundesländer', test: (s) => s.laender.size >= 3, belege: (s) => [...s.laender].map(([l, n]) => l + ' · ' + n + ' Anlagen') },
   { k: 'b1', ico: '🤚', name: 'Handauflegen', text: 'Einen Turm berührt', test: (s) => s.beruehrt.length >= 1, belege: (s) => s.beruehrt.map(fundZeile) },
   { k: 'b10', ico: '🙌', name: 'Turmstreichler', text: '10 Türme berührt', test: (s) => s.beruehrt.length >= 10, belege: (s) => s.beruehrt.map(fundZeile) },
+  { k: 'pionier', ico: '🚩', name: 'Pionier', text: 'Als Erste/r überhaupt entdeckt', fund: (f) => f.erst },
+  { k: 'erstkontakt', ico: '🖐️', name: 'Erstkontakt', text: 'Als Erste/r einen Turm berührt', fund: (f) => f.erstB },
   { k: 'zeitzeuge', ico: '🪦', name: 'Zeitzeuge', text: 'Gesammelte Anlage wurde abgebaut', test: (s) => s.abgebaut.length > 0, belege: (s) => s.abgebaut.map((f) => fundTitel(f) + ' · ' + (f.ort || '')) },
 ];
 ABZEICHEN.forEach((a) => {

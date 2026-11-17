@@ -325,7 +325,8 @@ function Funde({ s }) {
               <Text style={{ width: 26, textAlign: 'center', fontSize: 18, color: c.akzent }}>{weg ? '🪦' : f.b ? '🤚' : '★'}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '600', color: c.text, fontSize: 16 }} numberOfLines={1}>{fundTitel(f)}</Text>
-                <Leise klein>{[weg ? 'abgebaut' + (D.abgebaut[f.id] ? ' ' + datum(D.abgebaut[f.id]) : '') : null, f.ort, f.kreis].filter(Boolean).join(' · ')}</Leise>
+                <Leise klein>{[weg ? 'abgebaut' + (D.abgebaut[f.id] ? ' ' + datum(D.abgebaut[f.id]) : '') : null,
+                  f.erst ? '🚩 Erstentdeckung' : null, f.erstB ? '🖐️ zuerst berührt' : null, f.ort, f.kreis].filter(Boolean).join(' · ')}</Leise>
               </View>
               <Text style={{ fontWeight: '700', color: c.text, fontVariant: ['tabular-nums'] }}>{datum(f.t)}</Text>
             </Pressable>

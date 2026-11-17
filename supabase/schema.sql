@@ -226,7 +226,8 @@ begin
     'selten', v_modell and a.selten, 'erstentdecker', v_erst);
 end $$;
 
--- Turm berührt: unter 20 m. Noch nicht gesammelte Anlagen werden dabei mitgesammelt.
+-- Turm berührt: unter 20 m (+2). Wer als Erste/r überhaupt berührt, bekommt +3 dazu.
+-- Noch nicht gesammelte Anlagen werden dabei mitgesammelt.
 create or replace function public.beruehren(p_anlage text, p_lat float8, p_lon float8, p_zeit timestamptz default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
@@ -234,6 +235,8 @@ declare
   v_zeit timestamptz := least(now(), greatest(coalesce(p_zeit, now()), now() - interval '48 hours'));
   a      public.anlagen;
   r      jsonb := jsonb_build_object('punkte', 0);
+  v_erst boolean;
+  v_plus integer;
 begin
   select * into a from public.anlagen where id = p_anlage;
   if not found then raise exception 'Unbekannte Anlage'; end if;
@@ -241,12 +244,16 @@ begin
   if not exists (select 1 from public.funde where nutzer = v_uid and anlage = p_anlage) then
     r := public.sammeln(p_anlage, p_lat, p_lon, p_zeit);
   end if;
-  update public.funde set beruehrt = v_zeit, punkte = punkte + 2
+  v_erst := not exists (select 1 from public.funde where anlage = p_anlage and beruehrt is not null);
+  v_plus := 2 + case when v_erst then 3 else 0 end;
+  update public.funde set beruehrt = v_zeit, punkte = punkte + v_plus
    where nutzer = v_uid and anlage = p_anlage and beruehrt is null;
   if found then
-    r := jsonb_set(r, '{punkte}', to_jsonb(coalesce((r->>'punkte')::int, 0) + 2));
+    r := jsonb_set(r, '{punkte}', to_jsonb(coalesce((r->>'punkte')::int, 0) + v_plus));
+  else
+    v_erst := false;  -- war schon berührt
   end if;
-  return r || jsonb_build_object('beruehrt', true);
+  return r || jsonb_build_object('beruehrt', true, 'erstberuehrt', v_erst);
 end $$;
 
 create or replace function public.mein_stand()
@@ -268,6 +275,28 @@ language sql stable security definer set search_path = '' as $$
            where m1.nutzer = auth.uid()))
    order by f.zeit
    limit 1
+$$;
+
+-- Erstentdecker und Erstberührer einer Anlage (wer sie als Erste/r überhaupt gesammelt bzw. berührt hat).
+-- Der Name ist sichtbar für einen selbst, für Mitglieder gemeinsamer Gruppen und – wenn die Person in der
+-- globalen Rangliste sichtbar ist – für alle; sonst nur „ein anderer Spieler“ (name = null).
+create or replace function public.erstfinder(p_anlage text)
+returns jsonb language sql stable security definer set search_path = '' as $$
+  with sicht as (
+    select m2.nutzer from public.mitglieder m1 join public.mitglieder m2 on m2.gruppe = m1.gruppe where m1.nutzer = auth.uid()
+  ), e as (
+    select f.nutzer, f.zeit from public.funde f where f.anlage = p_anlage order by f.zeit limit 1
+  ), b as (
+    select f.nutzer, f.beruehrt as zeit from public.funde f where f.anlage = p_anlage and f.beruehrt is not null order by f.beruehrt limit 1
+  )
+  select jsonb_build_object(
+    'entdeckt', (select jsonb_build_object('zeit', e.zeit, 'ich', e.nutzer = auth.uid(),
+                   'name', case when e.nutzer = auth.uid() or p.global or e.nutzer in (select nutzer from sicht) then p.name end)
+                 from e join public.profile p on p.id = e.nutzer),
+    'beruehrt', (select jsonb_build_object('zeit', b.zeit, 'ich', b.nutzer = auth.uid(),
+                   'name', case when b.nutzer = auth.uid() or p.global or b.nutzer in (select nutzer from sicht) then p.name end)
+                 from b join public.profile p on p.id = b.nutzer))
+  where auth.uid() is not null
 $$;
 
 -- ---------------------------------------------------------------- Gruppen
@@ -612,6 +641,7 @@ grant execute on function
   public.sammeln(text, float8, float8, timestamptz),
   public.mein_stand(),
   public.entdecker(text),
+  public.erstfinder(text),
   public.gruppe_erstellen(text),
   public.gruppe_beitreten(text),
   public.gruppe_verlassen(uuid),

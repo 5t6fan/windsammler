@@ -203,6 +203,7 @@ function Kartenbereich() {
             strokeColor={PUNKT.gewaehlt} strokeWidth={3} lineDashPattern={[6, 8]} />
         )}
       </MapView>
+      <NaechsteNeue />
       <Pressable onPress={zeigeFunde} accessibilityLabel="Meine Funde auf der Karte" accessibilityState={{ selected: funde }}
         style={[st.kartenKnopf, { top: 10, backgroundColor: funde ? c.gold : c.flaeche, borderColor: c.linie }]}>
         <Text style={{ fontSize: 20, color: funde ? '#fff' : c.text }}>★</Text>
@@ -211,6 +212,36 @@ function Kartenbereich() {
         style={[st.kartenKnopf, { bottom: 10, backgroundColor: c.flaeche, borderColor: c.linie }]}>
         <Text style={{ fontSize: 22, color: c.text }}>◎</Text>
       </Pressable>
+    </View>
+  );
+}
+
+// Oben links auf der Karte: nächste Anlage, die man noch nicht hat, und nächste noch nicht berührte
+function NaechsteNeue() {
+  const w = useWind();
+  const c = useFarben();
+  const { D, pos, neu, unberuehrt, heading } = w;
+  if (!pos) return null;
+  const zeilen = neu != null && neu === unberuehrt ? [[neu, '★', 'Neu']]
+    : [[neu, '★', 'Neu'], [unberuehrt, '🤚', 'Unberührt']].filter(([i]) => i != null);
+  if (!zeilen.length) return null;
+  return (
+    <View style={st.neuBox}>
+      {zeilen.map(([i, ico, text]) => {
+        const a = anlage(D, i);
+        const d = distanz(pos.lat, pos.lon, a.lat, a.lon);
+        const b = peilung(pos.lat, pos.lon, a.lat, a.lon);
+        const rel = heading == null ? b : b - heading;
+        return (
+          <Pressable key={text} onPress={() => w.waehle(i)} style={[st.neuZeile, { backgroundColor: c.flaeche, borderColor: c.linie }]}
+            accessibilityRole="button" accessibilityLabel={text + ': ' + titel(a) + ', ' + entfernung(d) + ' Richtung ' + RICHTUNGEN[sektor(b)]}>
+            <Text style={{ fontSize: 13 }}>{ico}</Text>
+            <Text style={{ fontSize: 13, color: c.leise }}>{text}</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: c.text, fontVariant: ['tabular-nums'] }}>{entfernung(d)}</Text>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: c.akzent, transform: [{ rotate: rel + 'deg' }] }}>↑</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -261,6 +292,8 @@ const st = StyleSheet.create({
   aktionen: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
   dreieck: { width: 0, height: 0, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderStyle: 'solid' },
   kartenRahmen: { height: 320, borderRadius: 16, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
+  neuBox: { position: 'absolute', top: 10, left: 10, gap: 6, maxWidth: '75%' },
+  neuZeile: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 99, borderWidth: 1, alignSelf: 'flex-start' },
   kartenKnopf: { position: 'absolute', right: 10, width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   punkt: { width: 14, height: 14, borderRadius: 7, borderWidth: 2, borderColor: '#fff' },
   punktGross: { width: 20, height: 20, borderRadius: 10 },

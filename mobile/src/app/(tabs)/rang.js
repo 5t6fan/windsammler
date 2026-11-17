@@ -247,7 +247,7 @@ function Spiel() {
       <Abschnitt>Punkte</Abschnitt>
       <Karte>
         {[['Jede Anlage', '+1'], ['Neues Modell', '+5'], ['Neue Marke', '+10'], ['Seltenes Modell (≤ 20 in Deutschland)', '+20'],
-          ['Als Erste/r überhaupt gesammelt', '+3'], ['Turm berührt (unter 20 m)', '+2']].map(([t, p_], n) => (
+          ['Als Erste/r überhaupt gesammelt', '+3'], ['Turm berührt (unter 20 m)', '+2'], ['Als Erste/r überhaupt berührt', '+3']].map(([t, p_], n) => (
           <View key={t} style={[st.regel, n > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.linie }]}>
             <Text style={{ color: c.text, flex: 1 }}>{t}</Text>
             <Text style={{ color: c.akzent, fontWeight: '700' }}>{p_}</Text>

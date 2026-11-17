@@ -210,20 +210,30 @@ function neuePosition(p) {
 
 function berechneNah() {
   const { lat, lon } = S.pos;
-  const dLat = S.radius / 111320;
   const nah = [];
   let best = null, bestD = Infinity;
+  // Nächste Anlage, die man noch nicht hat bzw. noch nicht berührt hat – unabhängig vom Radius
+  let neu = null, neuD = Infinity, unb = null, unbD = Infinity;
+  const F = S.F;
   for (let i = 0; i < S.n; i++) {
-    if (!S.planung && S.d.anlagen[i][S.F.status] === S.planungIdx) continue;
-    const grob = Math.abs(S.lat[i] - lat);
-    if (grob > dLat && grob * 111320 > bestD) continue;
+    const z = S.d.anlagen[i];
+    const geplant = z[F.status] === S.planungIdx;
+    if (geplant && !S.planung) continue;
+    const grob = Math.abs(S.lat[i] - lat) * 111320;
+    if (grob > S.radius && grob > bestD && grob > neuD && grob > unbD) continue;
     const d = distanz(lat, lon, S.lat[i], S.lon[i]);
     if (d < bestD) { bestD = d; best = i; }
     if (d <= S.radius) nah.push({ i, d });
+    if (geplant || z[F.see] === 1) continue;
+    const f = S.heft.funde[z[F.id]];
+    if (!f && d < neuD) { neuD = d; neu = i; }
+    if (!(f && f.b) && d < unbD) { unbD = d; unb = i; }
   }
   nah.sort((a, b) => a.d - b.d);
   S.nah = nah;
   S.naechste = best;
+  S.neu = neu;
+  S.unberuehrt = unb;
   if (!S.manuell || S.sel == null) S.sel = best;
 }
 
@@ -283,22 +293,63 @@ function renderZiel() {
   $('#map-info-dist').textContent = entfernung(d) + ' ' + KURZ[sektor(b)] + (fund ? ' ✓' : '');
   $('#map-info-titel').textContent = titel(a) + (a.park ? ' · ' + a.park : '');
   S.zielPeilung = b;
+  renderNeu();
   drehePfeil();
   zeigeEntdecker(a.id);
   if (typeof Online !== 'undefined') Online.zeigeKommentare(a.id, !!fund);
 }
 
-// Erster Finder in meinen Gruppen (nur mit Rangliste)
+// Erstentdecker und Erstberührer (nur mit Rangliste)
 async function zeigeEntdecker(id) {
   const el = $('#ziel-entdecker');
   if (typeof Online === 'undefined' || !Online.angemeldet()) { el.hidden = true; return; }
   const e = await Online.entdecker(id);
   if (S.sel == null || anlage(S.sel).id !== id) return;  // inzwischen andere Anlage gewählt
-  el.hidden = !e;
-  if (e) el.textContent = '🚩 Erstentdeckt von ' + (e.ich ? 'dir' : e.name) + ' am ' + datum(Date.parse(e.zeit));
+  const wer = (x) => (x.ich ? 'dir' : x.name || 'einem anderen Spieler') + ' am ' + datum(Date.parse(x.zeit));
+  const zeilen = [];
+  if (e && e.entdeckt) zeilen.push('🚩 Erstentdeckt von ' + wer(e.entdeckt));
+  if (e && e.beruehrt) zeilen.push('🖐️ Zuerst berührt von ' + wer(e.beruehrt));
+  if (e && !e.entdeckt) zeilen.push('✨ Noch von niemandem entdeckt – sei die/der Erste!');
+  el.hidden = !zeilen.length;
+  el.innerHTML = zeilen.map(esc).join('<br>');
 }
 
+// Kleine Anzeige oben links auf der Karte: nächste neue und nächste unberührte Anlage
+function renderNeu() {
+  const el = $('#map-neu');
+  if (!S.pos || !S.d) { el.hidden = true; return; }
+  const zeile = (i, ico, text) => {
+    const a = anlage(i);
+    const d = distanz(S.pos.lat, S.pos.lon, a.lat, a.lon);
+    const b = peilung(S.pos.lat, S.pos.lon, a.lat, a.lon);
+    return '<button data-i="' + i + '" aria-label="' + esc(text + ': ' + titel(a) + ', ' + entfernung(d) + ' Richtung ' + RICHTUNGEN[sektor(b)]) + '">' +
+      '<span class="mn-ico">' + ico + '</span><span class="mn-text">' + text + '</span><b>' + entfernung(d) + '</b>' +
+      '<span class="mn-pfeil" data-b="' + b + '">↑</span></button>';
+  };
+  const html = [];
+  if (S.neu != null && S.neu === S.unberuehrt) html.push(zeile(S.neu, '★', 'Neu'));
+  else {
+    if (S.neu != null) html.push(zeile(S.neu, '★', 'Neu'));
+    if (S.unberuehrt != null) html.push(zeile(S.unberuehrt, '🤚', 'Unberührt'));
+  }
+  el.hidden = !html.length;
+  el.innerHTML = html.join('');
+  dreheNeu();
+}
+// Pfeile relativ zur Blickrichtung (ohne Kompass: relativ zu Norden)
+function dreheNeu() {
+  document.querySelectorAll('#map-neu .mn-pfeil').forEach((p) => {
+    const b = +p.dataset.b;
+    p.style.transform = 'rotate(' + (S.heading == null ? b : b - S.heading) + 'deg)';
+  });
+}
+$('#map-neu').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-i]');
+  if (b) waehle(+b.dataset.i, true);
+});
+
 function drehePfeil() {
+  dreheNeu();
   if (S.zielPeilung == null) return;
   const ohneKompass = S.heading == null;
   $('#kompass-hinweis').hidden = !ohneKompass;
@@ -311,6 +362,11 @@ function titel(a) {
   const modell = a.modell || a.typ;
   if (a.marke && modell) return a.marke + ' ' + modell;
   return a.marke || modell || 'Windenergieanlage';
+}
+
+// „Rotordurchmesser 90 m bis 120 m“ statt nur „90 m bis 120 m“; Plattformen behalten ihren Namen
+function quartettLabel(q) {
+  return q.gruppe === 'Plattformen & Technik' ? q.name : q.text + ' ' + q.name.charAt(0).toLowerCase() + q.name.slice(1);
 }
 
 function beschreibung(a) {
@@ -336,7 +392,7 @@ function beschreibung(a) {
       : 'Eine von ' + fmt0.format(n) + ' Anlagen dieses Modells in Deutschland.');
   }
   const q = QUARTETTE.filter((x) => a.marke && S.katalog.has(a.marke + '|' + a.modell) && x.test(S.katalog.get(a.marke + '|' + a.modell)));
-  if (q.length) s.push('Quartett: ' + q.map((x) => x.name).join(', ') + '.');
+  if (q.length) s.push('Quartette: ' + q.map(quartettLabel).join(', ') + '.');
   return s.join(' ');
 }
 
@@ -568,6 +624,7 @@ async function sammle(beruehrt) {
   const neu = pruefeAbzeichen();
   speichereHeft();
   if (navigator.vibrate) navigator.vibrate(beruehrt ? [30, 60, 30] : 30);
+  berechneNah();
   renderAlles();
   renderHeft();
 
@@ -578,7 +635,16 @@ async function sammle(beruehrt) {
     : 'Gesammelt: ' + titel(a);
   if (typeof Online !== 'undefined' && Online.angemeldet()) {
     const r = beruehrt ? await Online.beruehren(a.id, S.pos.lat, S.pos.lon) : await Online.sammeln(a.id, S.pos.lat, S.pos.lon);
-    if (r && r.punkte) meldung = '+' + r.punkte + ' Punkte · ' + meldung + (r.erstentdecker ? ' · Erstentdecker!' : '');
+    if (r && (r.erstentdecker || r.erstberuehrt)) {
+      const f = S.heft.funde[a.id];
+      if (r.erstentdecker) f.erst = true;
+      if (r.erstberuehrt) f.erstB = true;
+      const extra = pruefeAbzeichen();
+      speichereHeft();
+      renderHeft();
+      if (extra.length) meldung += ' · ' + extra.map((x) => x.ico + ' ' + x.name).join(' · ');
+    }
+    if (r && r.punkte) meldung = '+' + r.punkte + ' Punkte · ' + meldung + (r.erstentdecker ? ' · 🚩 Erstentdecker!' : '') + (r.erstberuehrt ? ' · 🖐️ Erste/r am Turm!' : '');
     else if (r && r.wartend) meldung += ' · wird übertragen, sobald Netz da ist';
     else if (r && r.fehler) meldung += ' · nicht gewertet: ' + r.fehler;
     renderZiel();
@@ -698,6 +764,8 @@ const ABZEICHEN = [
   { k: 'land3', ico: '🗺️', name: 'Grenzgänger', text: '3 Bundesländer', test: (s) => s.laender.size >= 3, belege: (s) => [...s.laender].map(([l, n]) => l + ' · ' + n + ' Anlagen') },
   { k: 'b1', ico: '🤚', name: 'Handauflegen', text: 'Einen Turm berührt', test: (s) => s.beruehrt.length >= 1, belege: (s) => s.beruehrt.map(fundZeile) },
   { k: 'b10', ico: '🙌', name: 'Turmstreichler', text: '10 Türme berührt', test: (s) => s.beruehrt.length >= 10, belege: (s) => s.beruehrt.map(fundZeile) },
+  { k: 'pionier', ico: '🚩', name: 'Pionier', text: 'Als Erste/r überhaupt entdeckt', fund: (f) => f.erst },
+  { k: 'erstkontakt', ico: '🖐️', name: 'Erstkontakt', text: 'Als Erste/r einen Turm berührt', fund: (f) => f.erstB },
   { k: 'zeitzeuge', ico: '🪦', name: 'Zeitzeuge', text: 'Gesammelte Anlage wurde abgebaut', test: (s) => s.abgebaut.length > 0, belege: (s) => s.abgebaut.map(abgebautZeile) },
 ];
 ABZEICHEN.forEach((a) => {
@@ -954,7 +1022,8 @@ function renderFunde(s) {
       const weg = istAbgebaut(f.id);
       return '<li data-id="' + esc(f.id) + '"' + (weg ? ' class="abgebaut"' : '') + '><span class="li-pfeil">' + (weg ? '🪦' : f.b ? '🤚' : '★') + '</span>' +
         '<span class="li-text"><div class="li-titel">' + esc(fundTitel(f)) + '</div><div class="li-unter">' +
-        esc([weg ? 'abgebaut' + (S.abgebaut[f.id] ? ' ' + datum(S.abgebaut[f.id]) : '') : null, f.ort, f.kreis].filter(Boolean).join(' · ')) +
+        esc([weg ? 'abgebaut' + (S.abgebaut[f.id] ? ' ' + datum(S.abgebaut[f.id]) : '') : null, f.erst ? '🚩 Erstentdeckung' : null,
+          f.erstB ? '🖐️ zuerst berührt' : null, f.ort, f.kreis].filter(Boolean).join(' · ')) +
         '</div></span><span class="li-dist">' + datum(f.t) + '</span></li>';
     }).join('')
     : S.fundFilter === 'alle'

@@ -109,9 +109,9 @@ export function WindProvider({ children }) {
   }, [aktPos]);
 
   const umgebung = useMemo(() => {
-    if (!D || !rechenPos) return { nah: [], naechste: null };
-    return berechneNah(D, rechenPos, radius, planung);
-  }, [D, rechenPos, radius, planung]);
+    if (!D || !rechenPos || !heft) return { nah: [], naechste: null, neu: null, unberuehrt: null };
+    return berechneNah(D, rechenPos, radius, planung, heft.funde);
+  }, [D, rechenPos, radius, planung, heft]);
 
   const sel = auswahl ?? umgebung.naechste;
 
@@ -149,7 +149,15 @@ export function WindProvider({ children }) {
     // Rangliste: Server prüft die Entfernung erneut und vergibt Punkte
     if (Online.angemeldet()) {
       const r = beruehrt ? await Online.beruehren(a.id, aktPos.lat, aktPos.lon) : await Online.sammeln(a.id, aktPos.lat, aktPos.lon);
-      if (r && r.punkte) text = '+' + r.punkte + ' Punkte · ' + text + (r.erstentdecker ? ' · Erstentdecker!' : '');
+      if (r && (r.erstentdecker || r.erstberuehrt)) {
+        // eigene Erstfunde im Heft vermerken (für Abzeichen und Fundliste)
+        const h2 = { ...h, funde: { ...h.funde, [a.id]: { ...h.funde[a.id], ...(r.erstentdecker && { erst: true }), ...(r.erstberuehrt && { erstB: true }) } }, abzeichen: { ...h.abzeichen } };
+        const extra = pruefeAbzeichen(D, h2);
+        setHeft(h2);
+        speichere(h2);
+        if (extra.length) text += ' · ' + extra.map((x) => x.ico + ' ' + x.name).join(' · ');
+      }
+      if (r && r.punkte) text = '+' + r.punkte + ' Punkte · ' + text + (r.erstentdecker ? ' · 🚩 Erstentdecker!' : '') + (r.erstberuehrt ? ' · 🖐️ Erste/r am Turm!' : '');
       else if (r && r.wartend) text += ' · wird übertragen, sobald Netz da ist';
       else if (r && r.fehler) text += ' · nicht gewertet: ' + r.fehler;
       zeige(text);
@@ -170,7 +178,7 @@ export function WindProvider({ children }) {
   const wert = {
     D, ladeFehler, heft, pos: aktPos, heading, standort, starteStandort,
     test, setTest, radius, setRadius, planung, setPlanung,
-    nah: umgebung.nah, naechste: umgebung.naechste, sel, manuell: auswahl != null && auswahl !== umgebung.naechste,
+    nah: umgebung.nah, naechste: umgebung.naechste, neu: umgebung.neu, unberuehrt: umgebung.unberuehrt, sel, manuell: auswahl != null && auswahl !== umgebung.naechste,
     waehle: setAuswahl, zurNaechsten: () => setAuswahl(null),
     sammelRadius, beruehrRadius, sammle, importiere,
     meldung, zeige,

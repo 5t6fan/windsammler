@@ -19,21 +19,27 @@ export const KURZ = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
 export const PFEILE = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
 export const sektor = (grad) => Math.round(grad / 45) % 8;
 
-// Alle Anlagen im Umkreis, sortiert nach Entfernung, plus die nächste überhaupt
-export function berechneNah(D, pos, radius, mitPlanung) {
+// Alle Anlagen im Umkreis, sortiert nach Entfernung, plus die nächste überhaupt –
+// und (unabhängig vom Radius) die nächste, die man noch nicht hat bzw. noch nicht berührt hat
+export function berechneNah(D, pos, radius, mitPlanung, funde) {
   const { lat, lon } = pos;
-  const dLat = radius / 111320;
   const nah = [];
-  let best = null, bestD = Infinity;
-  const st = D.F.status;
+  let best = null, bestD = Infinity, neu = null, neuD = Infinity, unb = null, unbD = Infinity;
+  const F = D.F;
   for (let i = 0; i < D.n; i++) {
-    if (!mitPlanung && D.rows[i][st] === D.planungIdx) continue;
-    const grob = Math.abs(D.lat[i] - lat);
-    if (grob > dLat && grob * 111320 > bestD) continue;
+    const z = D.rows[i];
+    const geplant = z[F.status] === D.planungIdx;
+    if (geplant && !mitPlanung) continue;
+    const grob = Math.abs(D.lat[i] - lat) * 111320;
+    if (grob > radius && grob > bestD && grob > neuD && grob > unbD) continue;
     const d = distanz(lat, lon, D.lat[i], D.lon[i]);
     if (d < bestD) { bestD = d; best = i; }
     if (d <= radius) nah.push({ i, d });
+    if (geplant || z[F.see] === 1) continue;
+    const f = funde[z[F.id]];
+    if (!f && d < neuD) { neuD = d; neu = i; }
+    if (!(f && f.b) && d < unbD) { unbD = d; unb = i; }
   }
   nah.sort((a, b) => a.d - b.d);
-  return { nah, naechste: best };
+  return { nah, naechste: best, neu, unberuehrt: unb };
 }

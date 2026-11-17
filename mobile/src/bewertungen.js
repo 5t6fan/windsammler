@@ -20,7 +20,12 @@ export function Entdecker({ id }) {
     return () => { aktuell = false; };
   }, [id, profil]);
   if (!e) return null;
-  return <Text style={{ marginTop: 8, fontWeight: '600', color: c.text }}>🚩 Erstentdeckt von {e.ich ? 'dir' : e.name} am {datum(Date.parse(e.zeit))}</Text>;
+  const wer = (x) => (x.ich ? 'dir' : x.name || 'einem anderen Spieler') + ' am ' + datum(Date.parse(x.zeit));
+  const zeilen = [];
+  if (e.entdeckt) zeilen.push('🚩 Erstentdeckt von ' + wer(e.entdeckt));
+  if (e.beruehrt) zeilen.push('🖐️ Zuerst berührt von ' + wer(e.beruehrt));
+  if (!e.entdeckt) zeilen.push('✨ Noch von niemandem entdeckt – sei die/der Erste!');
+  return <Text style={{ marginTop: 8, fontWeight: '600', color: c.text, lineHeight: 21 }}>{zeilen.join('\n')}</Text>;
 }
 
 export function Bewertungen({ id, gesammelt, zeige }) {

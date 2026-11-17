@@ -169,8 +169,7 @@ export async function entdecker(id) {
   if (!zustand.profil) return null;
   if (entdeckerCache.has(id)) return entdeckerCache.get(id);
   try {
-    const daten = await rpc('entdecker', { p_anlage: id });
-    const e = daten && daten[0] ? daten[0] : null;
+    const e = await rpc('erstfinder', { p_anlage: id });
     entdeckerCache.set(id, e);
     return e;
   } catch (_) {
