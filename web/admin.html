@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin – Windsammler</title>
+<meta name="theme-color" content="#0e6b58">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<style>
+  body { padding-bottom: 40px; }
+  .zahlen.admin { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .meldung { margin-bottom: 10px; }
+  .meldung-kopf { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .meldung-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: var(--bg); }
+  .meldung .ziel-aktionen .knopf { flex: 1 1 auto; min-height: 40px; font-size: 14px; }
+  .knopf.gefahr { color: #c0392b; border-color: color-mix(in srgb, #c0392b 40%, var(--linie)); }
+  .tag.rot { background: color-mix(in srgb, #c0392b 18%, transparent); }
+  .spieler li { cursor: default; }
+  code.id { font-size: 12px; overflow-wrap: anywhere; }
+  .zurueck { font-weight: 600; text-decoration: none; }
+</style>
+</head>
+<body>
+<header class="kopf">
+  <h1>Admin</h1>
+  <a class="zurueck" href="./">‹ Zur App</a>
+</header>
+
+<main>
+  <div id="status" class="karte leise">Lade …</div>
+
+  <div id="inhalt" hidden>
+    <h3 class="abschnitt">Überblick</h3>
+    <div id="zahlen" class="zahlen admin"></div>
+
+    <h3 class="abschnitt">Offene Meldungen <span id="offen-zahl"></span></h3>
+    <p class="leise klein">Ab 3 Meldungen ist ein Kommentar automatisch für alle außer dem Verfasser ausgeblendet.
+      „Verwerfen“ löscht die Meldungen und macht ihn wieder sichtbar.</p>
+    <div id="meldungen"></div>
+
+    <h3 class="abschnitt">Spieler</h3>
+    <div class="zeile" style="margin-bottom:10px">
+      <input id="suche" class="eingabe" placeholder="Name suchen" autocomplete="off">
+      <button id="btn-suche" class="knopf">Suchen</button>
+    </div>
+    <ul id="spieler" class="liste spieler"></ul>
+    <p class="leise klein">Löschen entfernt Profil, Funde, Bewertungen, Meldungen, Blockierungen und Gruppenmitgliedschaften endgültig.
+      Die Person kann danach ein neues Konto anlegen.</p>
+  </div>
+
+  <p class="leise klein" style="margin-top:24px">Dein Konto in diesem Browser: <code id="meine-id" class="id">–</code></p>
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="vendor/supabase.js"></script>
+<script src="config.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

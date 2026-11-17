@@ -46,6 +46,7 @@ function Anmelden() {
   const [captchaNr, setCaptchaNr] = useState(0);   // erhöhen = Captcha neu laden
   const [laeuft, setLaeuft] = useState(false);
   const [sitzung, setSitzung] = useState(false);   // Konto schon angelegt, nur der Name fehlt noch
+  const [fehler, setFehler] = useState(null);       // Hinweis direkt unter dem Namensfeld
   useEffect(() => { Online.hatSitzung().then(setSitzung); }, []);
 
   const nachricht = (e) => {
@@ -58,11 +59,12 @@ function Anmelden() {
 
   const los = async () => {
     setLaeuft(true);
+    setFehler(null);
     try {
       await Online.anmelden(name, token);
       zeige('Willkommen, ' + name.trim() + '!');
     } catch (e) {
-      zeige('Anmeldung fehlgeschlagen: ' + Online.fehlertext(e));
+      setFehler(Online.fehlertext(e));
       if (await Online.hatSitzung()) setSitzung(true);
       else { setToken(null); setCaptchaNr((n) => n + 1); }   // ein Token gilt nur einmal
     }
@@ -74,8 +76,10 @@ function Anmelden() {
       <Text style={[st.titel, { color: c.text }]}>Mit Freunden um die Wette sammeln</Text>
       <Leise style={{ textAlign: 'center' }}>Wähle einen Spielernamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.</Leise>
       <TextInput
-        value={name} onChangeText={setName} maxLength={24} placeholder="Spielername" placeholderTextColor={c.leise}
-        autoCorrect={false} textContentType="nickname" style={[st.eingabe, { color: c.text, borderColor: c.linie, backgroundColor: c.bg, textAlign: 'center', marginTop: 14 }]} />
+        value={name} onChangeText={(t) => { setName(t); setFehler(null); }} maxLength={24} placeholder="Spielername" placeholderTextColor={c.leise}
+        autoCorrect={false} textContentType="nickname" accessibilityHint={fehler || undefined}
+        style={[st.eingabe, { color: c.text, borderColor: fehler ? c.gewaehlt : c.linie, backgroundColor: c.bg, textAlign: 'center', marginTop: 14 }]} />
+      {fehler && <Text style={[st.feldFehler, { color: c.gewaehlt }]} accessibilityLiveRegion="polite">{fehler}</Text>}
       {!sitzung && <View style={st.captcha}>
         <WebView
           key={captchaNr} source={{ uri: CAPTCHA_URL }} onMessage={nachricht} style={{ backgroundColor: 'transparent' }}
@@ -108,6 +112,7 @@ function Spiel() {
   const [fehler, setFehler] = useState(null);
   const [blockiert, setBlockiert] = useState([]);
   const [neuerName, setNeuerName] = useState(null);
+  const [namensFehler, setNamensFehler] = useState(null);
   const [code, setCode] = useState('');
   const [gruppenName, setGruppenName] = useState('');
 
@@ -163,11 +168,14 @@ function Spiel() {
             </Pressable>
           ) : (
             <View style={{ flexDirection: 'row', gap: 6, marginVertical: 4 }}>
-              <TextInput value={neuerName} onChangeText={setNeuerName} maxLength={24} autoFocus
-                style={[st.eingabe, { flex: 1, color: c.text, borderColor: c.linie, backgroundColor: c.bg }]} />
-              <Knopf titel="OK" style={{ flexGrow: 0 }} onPress={async () => { if (await tu(() => Online.umbenennen(neuerName))) setNeuerName(null); }} />
+              <TextInput value={neuerName} onChangeText={(t) => { setNeuerName(t); setNamensFehler(null); }} maxLength={24} autoFocus
+                style={[st.eingabe, { flex: 1, color: c.text, borderColor: namensFehler ? c.gewaehlt : c.linie, backgroundColor: c.bg }]} />
+              <Knopf titel="OK" style={{ flexGrow: 0 }} onPress={async () => {
+                try { await Online.umbenennen(neuerName); setNeuerName(null); setNamensFehler(null); } catch (e) { setNamensFehler(Online.fehlertext(e)); }
+              }} />
             </View>
           )}
+          {neuerName != null && namensFehler && <Text style={[st.feldFehler, { color: c.gewaehlt, textAlign: 'left' }]} accessibilityLiveRegion="polite">{namensFehler}</Text>}
           <Leise klein>{stand ? fmt0.format(stand.anlagen) + ' Anlagen online gewertet' : ''}</Leise>
         </View>
         <View style={{ alignItems: 'center' }}>
@@ -305,6 +313,7 @@ const st = StyleSheet.create({
   inhalt: { padding: 16, paddingBottom: 40 },
   mitte: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   titel: { fontSize: 19, fontWeight: '700', textAlign: 'center', marginBottom: 6 },
+  feldFehler: { fontSize: 14, fontWeight: '600', marginTop: 6, textAlign: 'center', alignSelf: 'stretch' },
   eingabe: { minHeight: 46, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, fontSize: 16, alignSelf: 'stretch' },
   captcha: { height: 80, alignSelf: 'stretch', marginVertical: 12 },
   ichKarte: { flexDirection: 'row', alignItems: 'center', gap: 12 },

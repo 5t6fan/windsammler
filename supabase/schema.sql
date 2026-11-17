@@ -99,6 +99,14 @@ create table if not exists public.blockiert (
   unique (nutzer, blockiert)
 );
 
+-- Betreiber-Konten für die Admin-Seite (web/admin.html). Eintragen nur per SQL Editor:
+--   insert into public.admins (nutzer) values ('<Konto-ID von der Admin-Seite>');
+create table if not exists public.admins (
+  nutzer uuid primary key references auth.users (id) on delete cascade
+);
+-- Wann eine Meldung zuletzt geprüft und verworfen wurde
+alter table public.kommentare add column if not exists geprueft timestamptz;
+
 -- Fehlgeschlagene Beitrittsversuche (gegen Durchprobieren von Einladungscodes)
 create table if not exists public.beitritt_fehler (
   nutzer uuid not null references auth.users (id) on delete cascade,
@@ -123,6 +131,7 @@ alter table public.beitritt_fehler enable row level security;
 alter table public.kommentare enable row level security;
 alter table public.meldungen  enable row level security;
 alter table public.blockiert  enable row level security;
+alter table public.admins     enable row level security;
 
 drop policy if exists profil_lesen on public.profile;
 drop policy if exists profil_anlegen on public.profile;
@@ -463,6 +472,106 @@ returns void language sql security definer set search_path = '' as $$
   delete from public.blockiert where id = p_id and nutzer = auth.uid()
 $$;
 
+-- ---------------------------------------------------------------- Admin (nur für Konten in public.admins)
+
+create or replace function public._admin()
+returns uuid language plpgsql stable security definer set search_path = '' as $$
+declare v uuid := auth.uid();
+begin
+  if v is null or not exists (select 1 from public.admins where nutzer = v) then raise exception 'Keine Berechtigung'; end if;
+  return v;
+end $$;
+
+create or replace function public.admin_ist()
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.admins where nutzer = auth.uid())
+$$;
+
+create or replace function public.admin_uebersicht()
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+begin
+  perform public._admin();
+  return jsonb_build_object(
+    'spieler',        (select count(*) from public.profile),
+    'neu7',           (select count(*) from public.profile where erstellt > now() - interval '7 days'),
+    'aktiv7',         (select count(distinct nutzer) from public.funde where zeit > now() - interval '7 days'),
+    'aktiv30',        (select count(distinct nutzer) from public.funde where zeit > now() - interval '30 days'),
+    'global',         (select count(*) from public.profile where global),
+    'funde',          (select count(*) from public.funde),
+    'funde7',         (select count(*) from public.funde where zeit > now() - interval '7 days'),
+    'beruehrt',       (select count(*) from public.funde where beruehrt is not null),
+    'kommentare',     (select count(*) from public.kommentare),
+    'gruppen',        (select count(*) from public.gruppen),
+    'offen',          (select count(distinct kommentar) from public.meldungen),
+    'ausgeblendet',   (select count(*) from (select kommentar from public.meldungen group by kommentar having count(*) >= 3) x),
+    'aelteste_meldung', (select min(zeit) from public.meldungen)
+  );
+end $$;
+
+-- Gemeldete Kommentare, älteste Meldung zuerst
+create or replace function public.admin_meldungen()
+returns table (id uuid, verfasser uuid, name text, anlage text, sterne smallint, text text, zeit timestamptz,
+               meldungen bigint, erste_meldung timestamptz, ausgeblendet boolean)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  perform public._admin();
+  return query
+    select k.id, k.nutzer, p.name, k.anlage, k.sterne, k.text, k.zeit,
+           count(m.nutzer), min(m.zeit), count(m.nutzer) >= 3
+      from public.kommentare k
+      join public.profile p on p.id = k.nutzer
+      join public.meldungen m on m.kommentar = k.id
+     group by k.id, p.name
+     order by min(m.zeit);
+end $$;
+
+-- Meldungen verwerfen: Kommentar ist in Ordnung und wird wieder für alle sichtbar
+create or replace function public.admin_meldung_verwerfen(p_kommentar uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  perform public._admin();
+  delete from public.meldungen where kommentar = p_kommentar;
+  update public.kommentare set geprueft = now() where id = p_kommentar;
+end $$;
+
+create or replace function public.admin_kommentar_loeschen(p_kommentar uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  perform public._admin();
+  delete from public.kommentare where id = p_kommentar;
+end $$;
+
+-- Spielerliste mit Aktivität; p_suche filtert nach Namen
+create or replace function public.admin_spieler(p_suche text default null)
+returns table (id uuid, name text, erstellt timestamptz, global boolean, funde bigint, zuletzt timestamptz,
+               kommentare bigint, gemeldet bigint, admin boolean)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  perform public._admin();
+  return query
+    select p.id, p.name, p.erstellt, p.global,
+           (select count(*) from public.funde f where f.nutzer = p.id),
+           (select max(f.zeit) from public.funde f where f.nutzer = p.id),
+           (select count(*) from public.kommentare k where k.nutzer = p.id),
+           (select count(*) from public.meldungen m join public.kommentare k on k.id = m.kommentar where k.nutzer = p.id),
+           exists (select 1 from public.admins a where a.nutzer = p.id)
+      from public.profile p
+     where p_suche is null or p.name ilike '%' || p_suche || '%'
+     order by p.erstellt desc
+     limit 200;
+end $$;
+
+-- Spieler endgültig löschen (Profil, Funde, Bewertungen, Mitgliedschaften folgen per CASCADE)
+create or replace function public.admin_spieler_loeschen(p_nutzer uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+declare v_admin uuid := public._admin();
+begin
+  if p_nutzer = v_admin then raise exception 'Das eigene Konto bitte über „Konto löschen“ in der App löschen'; end if;
+  if exists (select 1 from public.admins where nutzer = p_nutzer) then raise exception 'Admin-Konten zuerst aus public.admins entfernen'; end if;
+  delete from auth.users where id = p_nutzer;
+  delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
+end $$;
+
 -- ---------------------------------------------------------------- Konto löschen (DSGVO)
 
 create or replace function public.konto_loeschen()
@@ -498,7 +607,7 @@ end $$;
 -- ---------------------------------------------------------------- Rechte
 
 revoke all on all functions in schema public from public, anon;
-revoke all on function public.distanz_m(float8, float8, float8, float8), public._nutzer(), public.aufraeumen() from authenticated;
+revoke all on function public.distanz_m(float8, float8, float8, float8), public._nutzer(), public._admin(), public.aufraeumen() from authenticated;
 grant execute on function
   public.sammeln(text, float8, float8, timestamptz),
   public.mein_stand(),
@@ -517,5 +626,12 @@ grant execute on function
   public.nutzer_blockieren(uuid),
   public.blockierte_lesen(),
   public.entblocken(uuid),
+  public.admin_ist(),
+  public.admin_uebersicht(),
+  public.admin_meldungen(),
+  public.admin_meldung_verwerfen(uuid),
+  public.admin_kommentar_loeschen(uuid),
+  public.admin_spieler(text),
+  public.admin_spieler_loeschen(uuid),
   public.konto_loeschen()
 to authenticated;
