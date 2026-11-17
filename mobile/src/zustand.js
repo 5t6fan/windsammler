@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { ladeDaten, anlage } from './lib/daten';
 import { berechneNah, distanz } from './lib/geo';
 import { aktualisiereHeft, pruefeAbzeichen, titel, SAMMEL_RADIUS, BERUEHR_RADIUS } from './lib/spiel';
+import * as Online from './online';
 
 const SPEICHER = 'windsammler.v1';
 // Testmodus nur in der Entwicklung: feste Position bei Kassel, Sammeln ohne Entfernungsgrenze
@@ -44,6 +45,7 @@ export function WindProvider({ children }) {
       if (!h || !h.funde) h = { v: 1, funde: {}, abzeichen: {} };
       setHeft(h);
     })();
+    Online.starte();
     ladeDaten((neu) => setD(neu))
       .then(setD)
       .catch((e) => setLadeFehler(e.message || String(e)));
@@ -115,7 +117,7 @@ export function WindProvider({ children }) {
 
   /* ---------- Sammeln und Berühren ---------- */
 
-  const sammle = useCallback((beruehrt) => {
+  const sammle = useCallback(async (beruehrt) => {
     if (!D || sel == null || !aktPos || !heft) return;
     const a = anlage(D, sel);
     const d = distanz(aktPos.lat, aktPos.lon, a.lat, a.lon);
@@ -138,11 +140,20 @@ export function WindProvider({ children }) {
     setHeft(h);
     speichere(h);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    zeige(neu.length ? neu.map((x) => x.ico + ' ' + x.name).join(' · ')
+    let text = neu.length ? neu.map((x) => x.ico + ' ' + x.name).join(' · ')
       : neueMarke ? 'Neue Marke: ' + a.marke + '!'
       : neuesModell ? 'Neues Modell: ' + titel(a) + '!'
       : beruehrt ? '🤚 Turm berührt: ' + titel(a)
-      : 'Gesammelt: ' + titel(a));
+      : 'Gesammelt: ' + titel(a);
+    zeige(text);
+    // Rangliste: Server prüft die Entfernung erneut und vergibt Punkte
+    if (Online.angemeldet()) {
+      const r = beruehrt ? await Online.beruehren(a.id, aktPos.lat, aktPos.lon) : await Online.sammeln(a.id, aktPos.lat, aktPos.lon);
+      if (r && r.punkte) text = '+' + r.punkte + ' Punkte · ' + text + (r.erstentdecker ? ' · Erstentdecker!' : '');
+      else if (r && r.wartend) text += ' · wird übertragen, sobald Netz da ist';
+      else if (r && r.fehler) text += ' · nicht gewertet: ' + r.fehler;
+      zeige(text);
+    }
   }, [D, sel, aktPos, heft, beruehrRadius, sammelRadius, speichere, zeige]);
 
   // Import einer Sicherung (auch aus der Web-App): zusammenführen statt überschreiben

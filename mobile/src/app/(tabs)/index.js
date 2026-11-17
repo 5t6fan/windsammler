@@ -8,6 +8,7 @@ import { peilung, distanz, sektor, RICHTUNGEN, KURZ, PFEILE } from '../../lib/ge
 import { entfernung, fmt0, datum } from '../../lib/format';
 import { beschreibung, etiketten, titel, istAbgebaut, fundTitel } from '../../lib/spiel';
 import { Karte, Knopf, Chips, Leise, Etikett, Abschnitt } from '../../ui';
+import { Bewertungen, Entdecker } from '../../bewertungen';
 
 const LISTE_MAX = 50;
 const KARTE_MAX = 200;   // so viele Punkte höchstens auf der Karte (Leistung)
@@ -109,6 +110,7 @@ function Ziel() {
       <Leise>{[a.park || a.name, a.ort, a.kreis].filter(Boolean).join(' · ')}</Leise>
       <View style={st.etiketten}>{etiketten(D, a, fund).map((e) => <Etikett key={e.text} {...e} />)}</View>
       <Text style={[st.zielText, { color: c.text }]}>{beschreibung(D, a)}</Text>
+      <Entdecker key={a.id + (fund ? ':g' : '')} id={a.id} />
       <View style={st.aktionen}>
         <Knopf haupt titel={sammelText} disabled={sammelAus} onPress={() => w.sammle(false)} />
         {zeigeBeruehren && <Knopf titel={beruehrText} disabled={!!(fund && fund.b) || d > w.beruehrRadius} onPress={() => w.sammle(true)} />}
@@ -116,6 +118,7 @@ function Ziel() {
       </View>
       {ohneKompass && <Leise klein style={{ marginTop: 8 }}>Kein Kompass: Der Pfeil zeigt relativ zu Norden (oben).</Leise>}
       {w.test && <Leise klein style={{ marginTop: 8 }}>Testmodus aktiv – feste Position, Sammeln ohne Entfernungsgrenze.</Leise>}
+      <Bewertungen id={a.id} gesammelt={!!fund} zeige={w.zeige} />
     </Karte>
   );
 }

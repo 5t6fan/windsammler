@@ -25,7 +25,8 @@
         {
           "locationWhenInUsePermission": "Der Windsammler zeigt dir Entfernung und Richtung zu Windenergieanlagen in deiner Nähe und prüft beim Sammeln, ob du wirklich dort bist."
         }
-      ]
+      ],
+      "expo-sqlite"
     ]
   }
 }
