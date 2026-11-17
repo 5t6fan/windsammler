@@ -45,3 +45,24 @@ Safari gibt Standort und Kompass nur über HTTPS frei, deshalb wird die App ver�
 2. Repository → Settings → Pages → Source: **GitHub Actions** (einmalig)
 3. Der Workflow `.github/workflows/pages.yml` veröffentlicht `web/` bei jedem Push auf `main`
 4. Auf dem iPhone die Pages-Adresse in Safari öffnen → Teilen → „Zum Home-Bildschirm“
+
+## App für iPhone und Android (Expo, im Aufbau)
+
+`mobile/` enthält eine native Fassung mit Expo (SDK 58, Expo Router). Sie nutzt dieselben Anlagendaten
+(lädt `wind.json` von GitHub Pages und speichert sie auf dem Gerät) und später dieselbe Supabase.
+Die Spiellogik liegt in `mobile/src/lib/` und entspricht der in `web/app.js`.
+
+Stand Prototyp: In der Nähe (Kompass, Karte, Liste), Sammeln, Turm berühren, Sammelheft mit Abzeichen,
+Verlauf, Hersteller komplett, Quartetten, Fundliste, Export/Import. Rangliste und Bewertungen folgen.
+
+### Auf dem iPhone testen (ohne Mac)
+
+1. Node.js (LTS) auf dem Rechner, auf dem iPhone die App **Expo Go** aus dem App Store
+2. `cd mobile` · `npm install` · `npx expo start`
+3. Den QR-Code mit der iPhone-Kamera scannen – die App öffnet sich in Expo Go
+   - Rechner und iPhone müssen im selben WLAN sein; die Windows-Firewall-Abfrage für Node erlauben
+   - Klappt das nicht (z. B. Firmen-WLAN): `npx expo start --tunnel`
+4. Zum Testen am Schreibtisch: im Startbildschirm „Testmodus“ antippen (feste Position bei Kassel,
+   Sammeln ohne Entfernungsgrenze; nur in der Entwicklung sichtbar)
+
+Ein Sammelheft aus der Web-App lässt sich übernehmen: dort „Exportieren“, in der App „Importieren“.

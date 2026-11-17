@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Windsammler",
+    "slug": "windsammler",
+    "scheme": "windsammler",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0e6b58",
+        "foregroundImage": "./assets/icon.png"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-sharing",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Der Windsammler zeigt dir Entfernung und Richtung zu Windenergieanlagen in deiner Nähe und prüft beim Sammeln, ob du wirklich dort bist."
+        }
+      ]
+    ]
+  }
+}
