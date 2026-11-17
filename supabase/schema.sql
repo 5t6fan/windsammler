@@ -28,6 +28,20 @@ create table if not exists public.profile (
   erstellt timestamptz not null default now()
 );
 
+-- Spielernamen eindeutig (ohne Rücksicht auf Groß-/Kleinschreibung und Leerzeichen am Rand).
+-- Einmalig: ältere Doppelungen umbenennen („Name 2“, „Name 3“ …), das älteste Konto behält den Namen.
+do $$
+declare r record;
+begin
+  if to_regclass('public.profile_name_eindeutig') is not null then return; end if;
+  for r in select id, name, row_number() over (partition by lower(btrim(name)) order by erstellt, id) as nr from public.profile loop
+    if r.nr > 1 then
+      update public.profile set name = left(btrim(r.name), 21) || ' ' || r.nr where id = r.id;
+    end if;
+  end loop;
+end $$;
+create unique index if not exists profile_name_eindeutig on public.profile (lower(btrim(name)));
+
 create table if not exists public.gruppen (
   id           uuid primary key default gen_random_uuid(),
   name         text not null check (char_length(btrim(name)) between 2 and 40),

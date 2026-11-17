@@ -35,6 +35,7 @@ const Online = (() => {
 
   function fehlertext(e) {
     if (netzfehler(e)) return 'Keine Verbindung';
+    if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielername ist schon vergeben';
     return (e && e.message) || 'Unbekannter Fehler';
   }
 
@@ -98,18 +99,22 @@ const Online = (() => {
     if (captchaWidget !== null && window.turnstile) window.turnstile.reset(captchaWidget);
   }
 
+  // Nach einem vergebenen Namen bleibt die Sitzung bestehen – dann ist kein neues Captcha nötig
+  let hatSitzung = false;
+
   async function anmelden(name) {
     name = name.trim();
     if (name.length < 2) return toast('Bitte mindestens 2 Zeichen');
-    if (cfg.turnstileSiteKey && !captchaToken) return toast('Bitte die Sicherheitsprüfung abwarten');
     try {
       let { data: { session } } = await sb.auth.getSession();
       if (!session) {
+        if (cfg.turnstileSiteKey && !captchaToken) return toast('Bitte die Sicherheitsprüfung abwarten');
         const r = await sb.auth.signInAnonymously(captchaToken ? { options: { captchaToken } } : undefined);
         captchaZuruecksetzen();
         if (r.error) throw r.error;
         session = r.data.session;
       }
+      hatSitzung = true;
       const { error } = await sb.from('profile').upsert({ id: session.user.id, name });
       if (error) throw error;
       profil = { id: session.user.id, name, global: !!(profil && profil.global) };
@@ -357,7 +362,7 @@ const Online = (() => {
     $('#rang-inhalt').hidden = !profil;
     if (!profil) {
       if ($('#view-rang').classList.contains('aktiv')) {
-        $('#btn-anmelden').disabled = !!cfg.turnstileSiteKey && !captchaToken;
+        $('#btn-anmelden').disabled = !!cfg.turnstileSiteKey && !captchaToken && !hatSitzung;
         ladeCaptcha();
       }
       return;

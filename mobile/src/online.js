@@ -27,6 +27,8 @@ export function useOnline() {
   return useSyncExternalStore((h) => { hoerer.add(h); return () => hoerer.delete(h); }, () => zustand);
 }
 export const angemeldet = () => !!zustand.profil;
+// Sitzung ohne Profil (z. B. nach einem vergebenen Namen) – dann ist kein neues Captcha nötig
+export const hatSitzung = async () => !!(await sb.auth.getSession()).data.session;
 
 /* ---------- Hilfen ---------- */
 
@@ -36,6 +38,7 @@ const netzfehler = (e) => /fetch|network|load failed|timeout|Netzwerk/i.test((e 
 
 export function fehlertext(e) {
   if (netzfehler(e)) return 'Keine Verbindung';
+  if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielername ist schon vergeben';
   return (e && e.message) || 'Unbekannter Fehler';
 }
 
@@ -77,6 +80,7 @@ export async function anmelden(name, captchaToken) {
   if (name.length < 2) throw new Error('Bitte mindestens 2 Zeichen');
   let { data: { session } } = await sb.auth.getSession();
   if (!session) {
+    if (!captchaToken) throw new Error('Bitte die Sicherheitsprüfung abwarten');
     const r = await sb.auth.signInAnonymously({ options: { captchaToken } });
     if (r.error) throw r.error;
     session = r.data.session;

@@ -45,6 +45,8 @@ function Anmelden() {
   const [token, setToken] = useState(null);
   const [captchaNr, setCaptchaNr] = useState(0);   // erhöhen = Captcha neu laden
   const [laeuft, setLaeuft] = useState(false);
+  const [sitzung, setSitzung] = useState(false);   // Konto schon angelegt, nur der Name fehlt noch
+  useEffect(() => { Online.hatSitzung().then(setSitzung); }, []);
 
   const nachricht = (e) => {
     try {
@@ -61,8 +63,8 @@ function Anmelden() {
       zeige('Willkommen, ' + name.trim() + '!');
     } catch (e) {
       zeige('Anmeldung fehlgeschlagen: ' + Online.fehlertext(e));
-      setToken(null);
-      setCaptchaNr((n) => n + 1);   // ein Token gilt nur einmal
+      if (await Online.hatSitzung()) setSitzung(true);
+      else { setToken(null); setCaptchaNr((n) => n + 1); }   // ein Token gilt nur einmal
     }
     setLaeuft(false);
   };
@@ -74,12 +76,17 @@ function Anmelden() {
       <TextInput
         value={name} onChangeText={setName} maxLength={24} placeholder="Spielername" placeholderTextColor={c.leise}
         autoCorrect={false} textContentType="nickname" style={[st.eingabe, { color: c.text, borderColor: c.linie, backgroundColor: c.bg, textAlign: 'center', marginTop: 14 }]} />
-      <View style={st.captcha}>
+      {!sitzung && <View style={st.captcha}>
         <WebView
           key={captchaNr} source={{ uri: CAPTCHA_URL }} onMessage={nachricht} style={{ backgroundColor: 'transparent' }}
-          scrollEnabled={false} originWhitelist={['https://*']} setSupportMultipleWindows={false} />
-      </View>
-      <Knopf haupt titel={laeuft ? 'Einen Moment …' : 'Los geht’s'} disabled={!token || laeuft || name.trim().length < 2} onPress={los} style={{ alignSelf: 'stretch' }} />
+          scrollEnabled={false} setSupportMultipleWindows={false}
+          // Turnstile lädt seine Prüfung in innere Rahmen (about:srcdoc, challenges.cloudflare.com) –
+          // die müssen erlaubt sein. Die Seite selbst darf nirgendwohin wegnavigieren.
+          originWhitelist={['*']}
+          onShouldStartLoadWithRequest={(r) => r.isTopFrame === false || r.url.startsWith(CAPTCHA_URL) || r.url.startsWith('about:')} />
+      </View>}
+      {sitzung && <View style={{ height: 12 }} />}
+      <Knopf haupt titel={laeuft ? 'Einen Moment …' : 'Los geht’s'} disabled={(!token && !sitzung) || laeuft || name.trim().length < 2} onPress={los} style={{ alignSelf: 'stretch' }} />
       <Leise klein style={{ textAlign: 'center', marginTop: 10 }}>
         Mit „Los geht’s“ wird ein Spielerkonto angelegt und du akzeptierst die Nutzungsbedingungen. Details in der Datenschutzerklärung.
       </Leise>
