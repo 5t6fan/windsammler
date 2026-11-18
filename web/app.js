@@ -9,6 +9,10 @@ const PARAM = new URLSearchParams(location.search);
 const TESTMODUS = PARAM.has('test');
 const SAMMEL_RADIUS = TESTMODUS ? Infinity : 300;   // Meter
 const BERUEHR_RADIUS = TESTMODUS ? Infinity : 20;   // Meter – „Turm berührt“
+const KUHKRATZER = 20;    // Meter – untere Blattspitze näher am Boden als das: „Kuhkratzer“
+// Abstand der unteren Blattspitze zum Boden (Nabenhöhe minus halber Rotordurchmesser)
+const freiraum = (a) => (a.nabe && a.rotor ? a.nabe - a.rotor / 2 : null);
+const istKuhkratzer = (a) => { const f = freiraum(a); return f != null && f < KUHKRATZER; };
 const AKTIV_MIN = 10;     // ein Modell zählt als „aktiv“, wenn so viele Anlagen an Land in Betrieb sind
 const LISTE_MAX = 50;
 const SPEICHER = 'windsammler.v1';
@@ -375,6 +379,7 @@ function beschreibung(a) {
   if (a.nabe && a.rotor) {
     s.push('Nabenhöhe ' + fmt0.format(a.nabe) + ' m, Rotordurchmesser ' + fmt0.format(a.rotor) +
       ' m – mit Blattspitze rund ' + fmt0.format(a.nabe + a.rotor / 2) + ' m hoch.');
+    if (istKuhkratzer(a)) s.push('Kuhkratzer: Die untere Blattspitze kommt dem Boden bis auf rund ' + fmt0.format(freiraum(a)) + ' m nahe.');
   } else if (a.nabe) {
     s.push('Nabenhöhe ' + fmt0.format(a.nabe) + ' m.');
   }
@@ -407,6 +412,7 @@ function tags(a, fund) {
   if (n && n <= 20) t.push('<span class="tag selten">💎 selten</span>');
   if (a.ibn && a.ibn < '2000' && !a.planung) t.push('<span class="tag">🕰️ Oldtimer</span>');
   if (a.nabe >= 160) t.push('<span class="tag">🗼 Riese</span>');
+  if (istKuhkratzer(a)) t.push('<span class="tag">🐄 Kuhkratzer</span>');
   return t.join('');
 }
 
@@ -492,6 +498,15 @@ function renderKarte() {
 
   if (S.sel != null) {
     L.polyline([[lat, lon], [S.lat[S.sel], S.lon[S.sel]]], { color: FARBE.gewaehlt, weight: 3, dashArray: '6 8', opacity: 0.8 }).addTo(S.layer);
+    // Pfeilspitze in der Mitte der Linie: zeigt von meinem Standort zur Anlage
+    const b = peilung(lat, lon, S.lat[S.sel], S.lon[S.sel]);
+    L.marker([(lat + S.lat[S.sel]) / 2, (lon + S.lon[S.sel]) / 2], {
+      icon: L.divIcon({
+        className: '', iconSize: [24, 24], iconAnchor: [12, 12],
+        html: '<svg class="weg-pfeil" viewBox="0 0 24 24" style="transform:rotate(' + b + 'deg)"><path d="M12 2 L21 21 L12 16 L3 21 Z"/></svg>',
+      }),
+      interactive: false, keyboard: false,
+    }).addTo(S.layer);
   }
   if (!S.ich) {
     S.ich = L.marker([lat, lon], {
@@ -557,6 +572,16 @@ function zentriere() {
 }
 $('#btn-zentrieren').addEventListener('click', zentriere);
 
+// Nach Wahl des Radius: alle Anlagen im Umkreis vollständig zeigen (ohne Anlagen: den ganzen Kreis)
+function zeigeUmkreis() {
+  if (!S.pos || !S.map) return;
+  const ich = L.latLng(S.pos.lat, S.pos.lon);
+  const rahmen = S.nah.length ? L.latLngBounds([ich]) : ich.toBounds(S.radius * 2);
+  S.nah.forEach(({ i }) => rahmen.extend([S.lat[i], S.lon[i]]));
+  if (S.sel != null) rahmen.extend([S.lat[S.sel], S.lon[S.sel]]);
+  S.map.fitBounds(rahmen, { padding: [30, 30], maxZoom: 15 });
+}
+
 /* Vollbild-Karte */
 const istVollbild = () => $('#map-wrap').classList.contains('vollbild');
 function vollbild(an) {
@@ -579,7 +604,7 @@ $('#radius').addEventListener('click', (e) => {
   if (!b) return;
   document.querySelectorAll('#radius button').forEach((x) => x.classList.toggle('an', x === b));
   S.radius = +b.dataset.r;
-  if (S.pos) { berechneNah(); renderAlles(); zentriere(); }
+  if (S.pos) { berechneNah(); renderAlles(); zeigeUmkreis(); }
 });
 
 $('#chk-planung').addEventListener('change', (e) => {
@@ -758,6 +783,7 @@ const ABZEICHEN = [
   { k: 'alt', ico: '🕰️', name: 'Oldtimer', text: 'Baujahr vor 2000', fund: (f) => f.ibn && f.ibn < '2000' },
   { k: 'riese', ico: '🗼', name: 'Riese', text: 'Nabe ab 160 m', fund: (f) => f.nabe >= 160 },
   { k: 'zwerg', ico: '🐭', name: 'Winzling', text: 'Nabe unter 50 m', fund: (f) => f.nabe && f.nabe < 50 },
+  { k: 'kuh', ico: '🐄', name: 'Kuhkratzer', text: 'Blattspitze unter ' + KUHKRATZER + ' m über dem Boden', fund: istKuhkratzer },
   { k: 'selten', ico: '💎', name: 'Rarität', text: 'Modell mit ≤ 20 Anlagen', test: (s) => s.selten.length > 0, belege: (s) => s.selten.map(fundZeile) },
   { k: 'park', ico: '🌬️', name: 'Park komplett', text: 'Alle Anlagen eines Windparks', test: (s) => s.parksKomplett.length > 0, belege: (s) => s.parksKomplett },
   { k: 'mw100', ico: '⚡', name: '100 Megawatt', text: 'Gesammelte Leistung', test: (s) => s.kw >= 100000, belege: (s) => [fmt.format(s.kw / 1000) + ' MW aus ' + s.funde.length + ' Anlagen'] },
@@ -1145,5 +1171,15 @@ function esc(t) {
 }
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  // Übernimmt eine neue Fassung (neue VERSION in sw.js), einmal neu laden – sonst sieht man sie erst beim übernächsten Öffnen.
+  // Beim allerersten Besuch gibt es noch keinen controller, dann nicht neu laden.
+  if (navigator.serviceWorker.controller) {
+    let neuGeladen = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (neuGeladen) return;
+      neuGeladen = true;
+      location.reload();
+    });
+  }
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

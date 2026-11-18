@@ -134,6 +134,8 @@ body.vollbild-an { overflow: hidden; }
 .map-info-text span { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .map-info-mehr { color: var(--akzent); font-weight: 600; font-size: 14px; flex: none; }
 
+.weg-pfeil { width: 24px; height: 24px; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
+.weg-pfeil path { fill: #e0452b; stroke: #fff; stroke-width: 1.5; stroke-linejoin: round; }
 .ich-punkt { width: 18px; height: 18px; border-radius: 50%; background: #2f7cf6; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(47,124,246,.25); }
 
 .filter { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }

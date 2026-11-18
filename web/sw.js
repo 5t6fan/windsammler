@@ -1,6 +1,6 @@
 // Service Worker: App und Anlagendaten offline verfügbar halten.
 // Bei Änderungen an App-Dateien VERSION erhöhen, damit iPhones die neue Fassung laden.
-const VERSION = 'v8';
+const VERSION = 'v9';
 const APP = [
   './', 'index.html', 'datenschutz.html', 'nutzungsbedingungen.html', 'style.css', 'app.js', 'online.js', 'config.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png',
@@ -9,7 +9,10 @@ const APP = [
 const DATEN = 'data/wind.json';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll([...APP, DATEN])).then(() => self.skipWaiting()));
+  // cache: 'reload' umgeht den HTTP-Cache des Browsers (GitHub Pages: max-age=600),
+  // sonst landet beim Versionswechsel womöglich noch die alte app.js im neuen Cache.
+  const neu = [...APP, DATEN].map((u) => new Request(u, { cache: 'reload' }));
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(neu)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {

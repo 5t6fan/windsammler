@@ -4,6 +4,11 @@ import { fmt, fmt0, datum, MONATE, MONATE_LANG } from './format';
 
 export const SAMMEL_RADIUS = 300;   // Meter
 export const BERUEHR_RADIUS = 20;   // Meter – „Turm berührt“
+export const KUHKRATZER = 20;       // Meter – untere Blattspitze näher am Boden als das: „Kuhkratzer“
+
+// Abstand der unteren Blattspitze zum Boden (Nabenhöhe minus halber Rotordurchmesser)
+export const freiraum = (a) => (a.nabe && a.rotor ? a.nabe - a.rotor / 2 : null);
+export const istKuhkratzer = (a) => { const f = freiraum(a); return f != null && f < KUHKRATZER; };
 
 export const istAbgebaut = (D, id) => !!D && !D.idIndex.has(id);
 export const fundTitel = (f) => [f.marke, f.modell || f.typ].filter(Boolean).join(' ') || 'Windenergieanlage';
@@ -43,6 +48,7 @@ export function beschreibung(D, a) {
   if (a.nabe && a.rotor) {
     s.push('Nabenhöhe ' + fmt0.format(a.nabe) + ' m, Rotordurchmesser ' + fmt0.format(a.rotor) +
       ' m – mit Blattspitze rund ' + fmt0.format(a.nabe + a.rotor / 2) + ' m hoch.');
+    if (istKuhkratzer(a)) s.push('Kuhkratzer: Die untere Blattspitze kommt dem Boden bis auf rund ' + fmt0.format(freiraum(a)) + ' m nahe.');
   } else if (a.nabe) {
     s.push('Nabenhöhe ' + fmt0.format(a.nabe) + ' m.');
   }
@@ -77,6 +83,7 @@ export function etiketten(D, a, fund) {
   if (n && n <= 20) t.push({ text: '💎 selten', art: 'selten' });
   if (a.ibn && a.ibn < '2000' && !a.planung) t.push({ text: '🕰️ Oldtimer', art: 'normal' });
   if (a.nabe >= 160) t.push({ text: '🗼 Riese', art: 'normal' });
+  if (istKuhkratzer(a)) t.push({ text: '🐄 Kuhkratzer', art: 'normal' });
   return t;
 }
 
@@ -190,6 +197,7 @@ export const ABZEICHEN = [
   { k: 'alt', ico: '🕰️', name: 'Oldtimer', text: 'Baujahr vor 2000', fund: (f) => f.ibn && f.ibn < '2000' },
   { k: 'riese', ico: '🗼', name: 'Riese', text: 'Nabe ab 160 m', fund: (f) => f.nabe >= 160 },
   { k: 'zwerg', ico: '🐭', name: 'Winzling', text: 'Nabe unter 50 m', fund: (f) => f.nabe && f.nabe < 50 },
+  { k: 'kuh', ico: '🐄', name: 'Kuhkratzer', text: 'Blattspitze unter ' + KUHKRATZER + ' m über dem Boden', fund: istKuhkratzer },
   { k: 'selten', ico: '💎', name: 'Rarität', text: 'Modell mit ≤ 20 Anlagen', test: (s) => s.selten.length > 0, belege: (s) => s.selten.map(fundZeile) },
   { k: 'park', ico: '🌬️', name: 'Park komplett', text: 'Alle Anlagen eines Windparks', test: (s) => s.parksKomplett.length > 0, belege: (s) => s.parksKomplett },
   { k: 'mw100', ico: '⚡', name: '100 Megawatt', text: 'Gesammelte Leistung', test: (s) => s.kw >= 100000, belege: (s) => [fmt.format(s.kw / 1000) + ' MW aus ' + s.funde.length + ' Anlagen'] },

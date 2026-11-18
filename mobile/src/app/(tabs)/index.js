@@ -11,7 +11,7 @@ import { Karte, Knopf, Chips, Leise, Etikett, Abschnitt } from '../../ui';
 import { Bewertungen, Entdecker } from '../../bewertungen';
 
 const LISTE_MAX = 50;
-const KARTE_MAX = 200;   // so viele Punkte höchstens auf der Karte (Leistung)
+const KARTE_MAX = 1000;  // so viele Punkte höchstens auf der Karte – reicht für 25 km auch in dichten Gegenden
 
 export default function Naehe() {
   const w = useWind();
@@ -156,6 +156,22 @@ function Kartenbereich() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pos, nah]);
 
+  // Nach Wahl des Radius: alle Anlagen im Umkreis vollständig zeigen (ohne Anlagen: den ganzen Kreis)
+  const radiusVorher = useRef(w.radius);
+  useEffect(() => {
+    if (radiusVorher.current === w.radius) return;
+    radiusVorher.current = w.radius;
+    if (!pos || !karte.current) return;
+    const k = [{ latitude: pos.lat, longitude: pos.lon }, ...nah.map(({ i }) => ({ latitude: D.lat[i], longitude: D.lon[i] }))];
+    if (sel != null) k.push({ latitude: D.lat[sel], longitude: D.lon[sel] });
+    if (k.length === 1) {
+      const dLat = w.radius / 111320, dLon = dLat / Math.cos(pos.lat * Math.PI / 180);
+      k.push({ latitude: pos.lat + dLat, longitude: pos.lon + dLon }, { latitude: pos.lat - dLat, longitude: pos.lon - dLon });
+    }
+    karte.current.fitToCoordinates(k, { edgePadding: { top: 40, right: 40, bottom: 40, left: 40 }, animated: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [w.radius, nah]);
+
   const zeigeFunde = () => {
     const an = !funde;
     setFunde(an);
@@ -166,27 +182,36 @@ function Kartenbereich() {
     setTimeout(() => karte.current && karte.current.fitToCoordinates(k, { edgePadding: { top: 50, right: 50, bottom: 50, left: 50 }, animated: true }), 50);
   };
 
-  const farbe = (i) => {
-    if (i === sel) return PUNKT.gewaehlt;
+  // Richtung der Linie von mir zur gewählten Anlage (auf 5° gerundet, damit der Marker selten neu zeichnet)
+  const wegPeilung = pos && sel != null ? Math.round(peilung(pos.lat, pos.lon, D.lat[sel], D.lon[sel]) / 5) * 5 : 0;
+
+  // Die vielen Punkte nur neu aufbauen, wenn sich Auswahl, Umkreis oder Funde ändern – nicht bei jeder Kompassdrehung
+  const waehle = useRef(w.waehle);
+  waehle.current = w.waehle;
+  const punktMarker = useMemo(() => punkte.map((i) => {
+    if (i === sel) return null;
     const z = D.rows[i];
-    if (heft.funde[z[D.F.id]]) return PUNKT.gesammelt;
-    return z[D.F.status] === D.planungIdx ? PUNKT.planung : PUNKT.aktiv;
-  };
+    const f = heft.funde[z[D.F.id]] ? PUNKT.gesammelt : z[D.F.status] === D.planungIdx ? PUNKT.planung : PUNKT.aktiv;
+    return (
+      <Marker key={i + f} coordinate={{ latitude: D.lat[i], longitude: D.lon[i] }} anchor={{ x: 0.5, y: 0.5 }}
+        tracksViewChanges={false} onPress={() => waehle.current(i)}>
+        <View style={[st.punkt, { backgroundColor: f }]} />
+      </Marker>
+    );
+  }), [punkte, sel, heft, D]);
 
   return (
     <View style={[st.kartenRahmen, { borderColor: c.linie }]}>
       <MapView
-        ref={karte} style={StyleSheet.absoluteFill} showsUserLocation={!w.test} showsCompass={false} toolbarEnabled={false}
+        ref={karte} style={StyleSheet.absoluteFill} showsUserLocation={!w.test} showsCompass={false} toolbarEnabled={false} rotateEnabled={false}
         initialRegion={{ latitude: pos ? pos.lat : 51.2, longitude: pos ? pos.lon : 10.4, latitudeDelta: pos ? 0.08 : 7, longitudeDelta: pos ? 0.08 : 7 }}>
-        {punkte.map((i) => {
-          const f = farbe(i);
-          return (
-            <Marker key={i + f} coordinate={{ latitude: D.lat[i], longitude: D.lon[i] }} anchor={{ x: 0.5, y: 0.5 }}
-              tracksViewChanges={false} onPress={() => w.waehle(i)}>
-              <View style={[st.punkt, i === sel && st.punktGross, { backgroundColor: f }]} />
-            </Marker>
-          );
-        })}
+        {punktMarker}
+        {sel != null && (
+          <Marker key={'sel' + sel} coordinate={{ latitude: D.lat[sel], longitude: D.lon[sel] }} anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false} zIndex={10}>
+            <View style={[st.punkt, st.punktGross, { backgroundColor: PUNKT.gewaehlt }]} />
+          </Marker>
+        )}
         {fundPunkte.map(({ id, f, weg }) => (
           <Marker key={'f' + id} coordinate={{ latitude: f.lat, longitude: f.lon }} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}
             title={fundTitel(f)} description={'Gesammelt ' + datum(f.t) + (f.b ? ' · 🤚 berührt' : '') + (weg ? ' · 🪦 abgebaut' : '')}>
@@ -201,6 +226,15 @@ function Kartenbereich() {
         {pos && sel != null && (
           <Polyline coordinates={[{ latitude: pos.lat, longitude: pos.lon }, { latitude: D.lat[sel], longitude: D.lon[sel] }]}
             strokeColor={PUNKT.gewaehlt} strokeWidth={3} lineDashPattern={[6, 8]} />
+        )}
+        {pos && sel != null && (
+          // Pfeilspitze in der Mitte der Linie: zeigt von meinem Standort zur Anlage (Karte ist eingenordet)
+          <Marker key={'weg' + sel + ':' + wegPeilung} coordinate={{ latitude: (pos.lat + D.lat[sel]) / 2, longitude: (pos.lon + D.lon[sel]) / 2 }}
+            anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false} tappable={false}>
+            <View style={{ transform: [{ rotate: wegPeilung + 'deg' }] }}>
+              <View style={[st.dreieck, { borderBottomColor: PUNKT.gewaehlt, borderLeftWidth: 8, borderRightWidth: 8, borderBottomWidth: 18 }]} />
+            </View>
+          </Marker>
         )}
       </MapView>
       <NaechsteNeue />
