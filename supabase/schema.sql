@@ -114,6 +114,23 @@ create table if not exists public.beitritt_fehler (
 );
 create index if not exists beitritt_fehler_nutzer on public.beitritt_fehler (nutzer, zeit);
 
+-- Passwort zum Wiederherstellen des Kontos (z. B. nach gelöschtem Browserspeicher oder auf einem
+-- neuen Gerät). Nur als bcrypt-Hash gespeichert; kein direkter Zugriff, nur über die Funktionen unten.
+create extension if not exists pgcrypto with schema extensions;
+create table if not exists public.passwoerter (
+  nutzer    uuid primary key references public.profile (id) on delete cascade,
+  hash      text not null,
+  geaendert timestamptz not null default now()
+);
+-- Fehlgeschlagene Anmeldungen mit Passwort (gegen Durchprobieren)
+create table if not exists public.login_fehler (
+  name   text not null,
+  nutzer uuid not null,
+  zeit   timestamptz not null default now()
+);
+create index if not exists login_fehler_name on public.login_fehler (name, zeit);
+create index if not exists login_fehler_nutzer on public.login_fehler (nutzer, zeit);
+
 create index if not exists funde_anlage_zeit on public.funde (anlage, zeit);
 create index if not exists funde_nutzer_zeit on public.funde (nutzer, zeit desc);
 create index if not exists mitglieder_nutzer on public.mitglieder (nutzer);
@@ -132,6 +149,8 @@ alter table public.kommentare enable row level security;
 alter table public.meldungen  enable row level security;
 alter table public.blockiert  enable row level security;
 alter table public.admins     enable row level security;
+alter table public.passwoerter enable row level security;
+alter table public.login_fehler enable row level security;
 
 drop policy if exists profil_lesen on public.profile;
 drop policy if exists profil_anlegen on public.profile;
@@ -612,6 +631,86 @@ begin
   delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
 end $$;
 
+-- ---------------------------------------------------------------- Passwort & Konto wiederherstellen
+-- Konten sind anonym und hängen am Browser-/App-Speicher. Wer ein Passwort festlegt, kann sich später
+-- in einer neuen (anonymen) Sitzung mit Spielername + Passwort anmelden: Alle Daten des alten Kontos
+-- wandern dann ins neue, das alte wird gelöscht.
+
+create or replace function public.passwort_setzen(p_passwort text)
+returns void language plpgsql security definer set search_path = '' as $$
+declare v_uid uuid := public._nutzer();
+begin
+  if char_length(coalesce(p_passwort, '')) < 6 then raise exception 'Das Passwort braucht mindestens 6 Zeichen'; end if;
+  if char_length(p_passwort) > 72 then raise exception 'Das Passwort ist zu lang (höchstens 72 Zeichen)'; end if;
+  insert into public.passwoerter (nutzer, hash) values (v_uid, extensions.crypt(p_passwort, extensions.gen_salt('bf', 10)))
+  on conflict (nutzer) do update set hash = excluded.hash, geaendert = now();
+end $$;
+
+create or replace function public.hat_passwort()
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.passwoerter where nutzer = auth.uid())
+$$;
+
+create or replace function public.konto_uebernehmen(p_name text, p_passwort text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_neu  uuid := auth.uid();
+  v_key  text := lower(btrim(coalesce(p_name, '')));
+  alt    record;
+begin
+  if v_neu is null then raise exception 'Nicht angemeldet'; end if;
+  if (select count(*) from public.login_fehler where name = v_key and zeit > now() - interval '15 minutes') >= 5
+     or (select count(*) from public.login_fehler where nutzer = v_neu and zeit > now() - interval '1 hour') >= 20 then
+    return jsonb_build_object('fehler', 'Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen');
+  end if;
+
+  select p.id, p.name, p.global, p.erstellt, w.hash into alt
+    from public.profile p join public.passwoerter w on w.nutzer = p.id
+   where lower(btrim(p.name)) = v_key;
+  if not found or alt.hash <> extensions.crypt(coalesce(p_passwort, ''), alt.hash) then
+    insert into public.login_fehler (name, nutzer) values (v_key, v_neu);
+    return jsonb_build_object('fehler', 'Spielername oder Passwort falsch');
+  end if;
+  if alt.id = v_neu then
+    return jsonb_build_object('id', alt.id, 'name', alt.name, 'global', alt.global);
+  end if;
+
+  -- Profil für die neue Sitzung (vorläufiger Name, falls hier noch keins existiert)
+  insert into public.profile (id, name) values (v_neu, '~' || left(replace(v_neu::text, '-', ''), 20))
+  on conflict (id) do nothing;
+
+  -- Funde: doppelte Anlagen zusammenführen (früheste Zeit, höhere Punkte), Rest umhängen
+  update public.funde n
+     set zeit = least(n.zeit, a.zeit), punkte = greatest(n.punkte, a.punkte), beruehrt = least(n.beruehrt, a.beruehrt)
+    from public.funde a
+   where a.nutzer = alt.id and n.nutzer = v_neu and n.anlage = a.anlage;
+  update public.funde a set nutzer = v_neu
+   where a.nutzer = alt.id and not exists (select 1 from public.funde n where n.nutzer = v_neu and n.anlage = a.anlage);
+
+  update public.mitglieder a set nutzer = v_neu
+   where a.nutzer = alt.id and not exists (select 1 from public.mitglieder n where n.nutzer = v_neu and n.gruppe = a.gruppe);
+  update public.kommentare a set nutzer = v_neu
+   where a.nutzer = alt.id and not exists (select 1 from public.kommentare n where n.nutzer = v_neu and n.anlage = a.anlage);
+  update public.meldungen a set nutzer = v_neu
+   where a.nutzer = alt.id and not exists (select 1 from public.meldungen n where n.nutzer = v_neu and n.kommentar = a.kommentar);
+  update public.blockiert a set nutzer = v_neu
+   where a.nutzer = alt.id and not exists (select 1 from public.blockiert n where n.nutzer = v_neu and n.blockiert = a.blockiert);
+  update public.blockiert a set blockiert = v_neu
+   where a.blockiert = alt.id and not exists (select 1 from public.blockiert n where n.blockiert = v_neu and n.nutzer = a.nutzer);
+  delete from public.blockiert where nutzer = blockiert;
+  update public.gruppen set erstellt_von = v_neu where erstellt_von = alt.id;
+  update public.admins a set nutzer = v_neu
+   where a.nutzer = alt.id and not exists (select 1 from public.admins n where n.nutzer = v_neu);
+  delete from public.passwoerter where nutzer = v_neu;
+  update public.passwoerter set nutzer = v_neu where nutzer = alt.id;
+
+  -- Altes Konto löschen (übrig gebliebene Doppelungen folgen per CASCADE), dann Name übernehmen
+  delete from auth.users where id = alt.id;
+  update public.profile set name = alt.name, global = alt.global, erstellt = least(erstellt, alt.erstellt) where id = v_neu;
+  delete from public.login_fehler where name = v_key;
+  return jsonb_build_object('id', v_neu, 'name', alt.name, 'global', alt.global);
+end $$;
+
 -- ---------------------------------------------------------------- Aufräumen (nächtlich per pg_cron)
 -- Anonyme Konten ohne Spielernamen (abgebrochene oder automatisierte Anmeldungen) nach einem Tag löschen,
 -- ebenso alte Fehlversuche.
@@ -622,6 +721,7 @@ returns void language sql security definer set search_path = '' as $$
    where u.is_anonymous and u.created_at < now() - interval '1 day'
      and not exists (select 1 from public.profile p where p.id = u.id);
   delete from public.beitritt_fehler where zeit < now() - interval '1 day';
+  delete from public.login_fehler where zeit < now() - interval '1 day';
   delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
 $$;
 
@@ -663,5 +763,8 @@ grant execute on function
   public.admin_kommentar_loeschen(uuid),
   public.admin_spieler(text),
   public.admin_spieler_loeschen(uuid),
-  public.konto_loeschen()
+  public.konto_loeschen(),
+  public.passwort_setzen(text),
+  public.hat_passwort(),
+  public.konto_uebernehmen(text, text)
 to authenticated;

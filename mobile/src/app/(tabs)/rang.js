@@ -42,6 +42,8 @@ function Anmelden() {
   const c = useFarben();
   const { zeige } = useWind();
   const [name, setName] = useState('');
+  const [passwort, setPasswort] = useState('');
+  const [mitPasswort, setMitPasswort] = useState(false);   // false = neues Konto, true = mit Passwort anmelden
   const [token, setToken] = useState(null);
   const [captchaNr, setCaptchaNr] = useState(0);   // erhöhen = Captcha neu laden
   const [laeuft, setLaeuft] = useState(false);
@@ -61,8 +63,11 @@ function Anmelden() {
     setLaeuft(true);
     setFehler(null);
     try {
-      await Online.anmelden(name, token);
-      zeige('Willkommen, ' + name.trim() + '!');
+      if (mitPasswort) zeige('Willkommen zurück, ' + await Online.anmeldenMitPasswort(name, passwort, token) + '!');
+      else {
+        await Online.anmelden(name, token);
+        zeige('Willkommen, ' + name.trim() + '!');
+      }
     } catch (e) {
       setFehler(Online.fehlertext(e));
       if (await Online.hatSitzung()) setSitzung(true);
@@ -74,11 +79,19 @@ function Anmelden() {
   return (
     <Karte style={{ alignItems: 'center', paddingVertical: 24 }}>
       <Text style={[st.titel, { color: c.text }]}>Mit Freunden um die Wette sammeln</Text>
-      <Leise style={{ textAlign: 'center' }}>Wähle einen Spielernamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.</Leise>
+      <Leise style={{ textAlign: 'center' }}>
+        {mitPasswort
+          ? 'Melde dich mit Spielername und dem Passwort an, das du in deinem Konto festgelegt hast. Punkte, Gruppen und Bewertungen kommen mit.'
+          : 'Wähle einen Spielernamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.'}
+      </Leise>
       <TextInput
         value={name} onChangeText={(t) => { setName(t); setFehler(null); }} maxLength={24} placeholder="Spielername" placeholderTextColor={c.leise}
-        autoCorrect={false} textContentType="nickname" accessibilityHint={fehler || undefined}
+        autoCorrect={false} autoCapitalize="none" textContentType={mitPasswort ? 'username' : 'nickname'} accessibilityHint={fehler || undefined}
         style={[st.eingabe, { color: c.text, borderColor: fehler ? c.gewaehlt : c.linie, backgroundColor: c.bg, textAlign: 'center', marginTop: 14 }]} />
+      {mitPasswort && <TextInput
+        value={passwort} onChangeText={(t) => { setPasswort(t); setFehler(null); }} maxLength={72} placeholder="Passwort" placeholderTextColor={c.leise}
+        secureTextEntry autoCorrect={false} autoCapitalize="none" textContentType="password" autoComplete="current-password"
+        style={[st.eingabe, { color: c.text, borderColor: fehler ? c.gewaehlt : c.linie, backgroundColor: c.bg, textAlign: 'center', marginTop: 10 }]} />}
       {fehler && <Text style={[st.feldFehler, { color: c.gewaehlt }]} accessibilityLiveRegion="polite">{fehler}</Text>}
       {!sitzung && <View style={st.captcha}>
         <WebView
@@ -90,10 +103,14 @@ function Anmelden() {
           onShouldStartLoadWithRequest={(r) => r.isTopFrame === false || r.url.startsWith(CAPTCHA_URL) || r.url.startsWith('about:')} />
       </View>}
       {sitzung && <View style={{ height: 12 }} />}
-      <Knopf haupt titel={laeuft ? 'Einen Moment …' : 'Los geht’s'} disabled={(!token && !sitzung) || laeuft || name.trim().length < 2} onPress={los} style={{ alignSelf: 'stretch' }} />
-      <Leise klein style={{ textAlign: 'center', marginTop: 10 }}>
+      <Knopf haupt titel={laeuft ? 'Einen Moment …' : mitPasswort ? 'Anmelden' : 'Los geht’s'}
+        disabled={(!token && !sitzung) || laeuft || name.trim().length < 2 || (mitPasswort && !passwort)} onPress={los} style={{ alignSelf: 'stretch' }} />
+      <Pressable onPress={() => { setMitPasswort(!mitPasswort); setFehler(null); }} accessibilityRole="button" hitSlop={8} style={{ paddingVertical: 12 }}>
+        <Text style={{ color: c.leise, textDecorationLine: 'underline' }}>{mitPasswort ? 'Neu hier? Spielerkonto anlegen' : 'Schon ein Konto? Mit Passwort anmelden'}</Text>
+      </Pressable>
+      {!mitPasswort && <Leise klein style={{ textAlign: 'center' }}>
         Mit „Los geht’s“ wird ein Spielerkonto angelegt und du akzeptierst die Nutzungsbedingungen. Details in der Datenschutzerklärung.
-      </Leise>
+      </Leise>}
       <Links />
     </Karte>
   );
@@ -188,6 +205,7 @@ function Spiel() {
           an ? 'Du bist jetzt in der globalen Rangliste sichtbar' : 'Du bist in der globalen Rangliste nicht mehr sichtbar')} trackColor={{ true: c.akzent }} />
         <Leise>In der globalen Rangliste zeigen</Leise>
       </View>
+      <KontoSichern />
       {o.warte > 0 && <Text style={[st.hinweis, { color: c.text, backgroundColor: c.dunkel ? '#3a3016' : '#f6ecd6' }]}>{o.warte} {o.warte === 1 ? 'Fund wartet' : 'Funde warten'} auf Netz und wird automatisch übertragen.</Text>}
 
       <Abschnitt>Rangliste</Abschnitt>
@@ -276,6 +294,42 @@ function Spiel() {
       </Pressable>
       <Links />
     </View>
+  );
+}
+
+/* ---------- Passwort festlegen, damit sich das Konto auf anderen Geräten wiederherstellen lässt ---------- */
+
+function KontoSichern() {
+  const c = useFarben();
+  const { zeige } = useWind();
+  const o = Online.useOnline();
+  const [pw, setPw] = useState('');
+  const [laeuft, setLaeuft] = useState(false);
+  if (o.hatPasswort === null) return null;
+  const speichern = async () => {
+    setLaeuft(true);
+    try {
+      await Online.passwortSetzen(pw);
+      setPw('');
+      zeige('Passwort gespeichert – anmelden kannst du dich jetzt mit „' + o.profil.name + '“ und diesem Passwort');
+    } catch (e) { zeige(Online.fehlertext(e)); }
+    setLaeuft(false);
+  };
+  return (
+    <Karte style={[{ marginBottom: 10 }, !o.hatPasswort && { backgroundColor: c.dunkel ? '#3a3016' : '#f6ecd6' }]}>
+      <Text style={{ fontWeight: '700', color: c.text }}>{o.hatPasswort ? 'Passwort ändern' : '⚠️ Konto sichern'}</Text>
+      <Leise klein style={{ marginTop: 4, marginBottom: 10 }}>
+        {o.hatPasswort
+          ? 'Dein Konto ist mit einem Passwort gesichert. Auf einem anderen Gerät oder nach einer Neuinstallation: „Mit Passwort anmelden“ mit deinem Spielernamen.'
+          : 'Dein Konto hängt nur an dieser App-Installation. Lege ein Passwort fest, damit du dich nach einer Neuinstallation oder auf einem anderen Gerät (auch in der Web-App) wieder anmelden kannst.'}
+      </Leise>
+      <View style={st.zeileEingabe}>
+        <TextInput value={pw} onChangeText={setPw} maxLength={72} placeholder="Neues Passwort (mind. 6 Zeichen)" placeholderTextColor={c.leise}
+          secureTextEntry autoCorrect={false} autoCapitalize="none" textContentType="newPassword" autoComplete="new-password"
+          style={[st.eingabe, { flex: 1, color: c.text, borderColor: c.linie, backgroundColor: c.bg }]} />
+        <Knopf haupt titel={laeuft ? '…' : 'Speichern'} disabled={laeuft || pw.length < 6} onPress={speichern} style={{ flexGrow: 0 }} />
+      </View>
+    </Karte>
   );
 }
 

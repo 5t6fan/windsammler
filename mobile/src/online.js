@@ -17,7 +17,8 @@ export const GLOBAL = 'global';
 
 /* ---------- kleiner Zustandsspeicher mit React-Hook ---------- */
 
-let zustand = { bereit: false, profil: null, gruppen: [], gruppe: null, warte: 0 };
+// hatPasswort: null = unbekannt
+let zustand = { bereit: false, profil: null, gruppen: [], gruppe: null, warte: 0, hatPasswort: null };
 const hoerer = new Set();
 function setze(teil) {
   zustand = { ...zustand, ...teil };
@@ -38,7 +39,7 @@ const netzfehler = (e) => /fetch|network|load failed|timeout|Netzwerk/i.test((e 
 
 export function fehlertext(e) {
   if (netzfehler(e)) return 'Keine Verbindung';
-  if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielername ist schon vergeben';
+  if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielername ist schon vergeben. Dein altes Konto? Dann „Mit Passwort anmelden“.';
   return (e && e.message) || 'Unbekannter Fehler';
 }
 
@@ -72,24 +73,54 @@ async function ladeProfil(uid) {
   const { data, error } = await sb.from('profile').select('id,name,global').eq('id', uid).maybeSingle();
   if (error) throw error;
   setze({ profil: data });
+  if (data) ladePasswortStatus();
+}
+
+async function ladePasswortStatus() {
+  try { setze({ hatPasswort: !!(await rpc('hat_passwort')) }); } catch (_) { setze({ hatPasswort: null }); }
 }
 
 // captchaToken kommt aus der Captcha-Seite (Cloudflare Turnstile) im eingebetteten Browserfenster
+async function sitzung(captchaToken) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) return session;
+  if (!captchaToken) throw new Error('Bitte die Sicherheitsprüfung abwarten');
+  const r = await sb.auth.signInAnonymously({ options: { captchaToken } });
+  if (r.error) throw r.error;
+  return r.data.session;
+}
+
 export async function anmelden(name, captchaToken) {
   name = name.trim();
   if (name.length < 2) throw new Error('Bitte mindestens 2 Zeichen');
-  let { data: { session } } = await sb.auth.getSession();
-  if (!session) {
-    if (!captchaToken) throw new Error('Bitte die Sicherheitsprüfung abwarten');
-    const r = await sb.auth.signInAnonymously({ options: { captchaToken } });
-    if (r.error) throw r.error;
-    session = r.data.session;
-  }
+  const session = await sitzung(captchaToken);
   const { error } = await sb.from('profile').upsert({ id: session.user.id, name });
   if (error) throw error;
-  setze({ profil: { id: session.user.id, name, global: false } });
+  setze({ profil: { id: session.user.id, name, global: false }, hatPasswort: false });
   await ladeGruppen();
   sendeWarteschlange();
+}
+
+// Altes Konto mit Spielername + Passwort in diese Sitzung übernehmen (Funde, Gruppen, Bewertungen kommen mit)
+export async function anmeldenMitPasswort(name, passwort, captchaToken) {
+  name = name.trim();
+  if (name.length < 2) throw new Error('Bitte mindestens 2 Zeichen');
+  if (!passwort) throw new Error('Bitte das Passwort eingeben');
+  await sitzung(captchaToken);
+  const r = await rpc('konto_uebernehmen', { p_name: name, p_passwort: passwort });
+  if (r.fehler) throw new Error(r.fehler);
+  entdeckerCache.clear();
+  kommentarCache.clear();
+  setze({ profil: { id: r.id, name: r.name, global: !!r.global }, hatPasswort: true });
+  await ladeGruppen();
+  sendeWarteschlange();
+  return r.name;
+}
+
+export async function passwortSetzen(passwort) {
+  if ((passwort || '').length < 6) throw new Error('Das Passwort braucht mindestens 6 Zeichen');
+  await rpc('passwort_setzen', { p_passwort: passwort });
+  setze({ hatPasswort: true });
 }
 
 export async function umbenennen(name) {
@@ -112,7 +143,7 @@ export async function kontoLoeschen() {
   schreib(WARTESCHLANGE, []);
   entdeckerCache.clear();
   kommentarCache.clear();
-  setze({ profil: null, gruppen: [], gruppe: null, warte: 0 });
+  setze({ profil: null, gruppen: [], gruppe: null, warte: 0, hatPasswort: null });
 }
 
 /* ---------- Sammeln & Berühren (mit Warteschlange ohne Netz) ---------- */

@@ -14,6 +14,8 @@ const Online = (() => {
   const GLOBAL = 'global';
 
   let profil = null;          // { id, name, global }
+  let hatPasswort = null;     // null = unbekannt
+  let mitPasswort = false;    // Anmeldekarte: false = neues Konto, true = mit Passwort anmelden
   let gruppen = [];
   let gruppe = null;          // gewählte Gruppen-ID oder GLOBAL
   let zeitraum = 'monat';     // monat | jahr | gesamt
@@ -35,7 +37,7 @@ const Online = (() => {
 
   function fehlertext(e) {
     if (netzfehler(e)) return 'Keine Verbindung';
-    if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielername ist schon vergeben';
+    if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielername ist schon vergeben. Dein altes Konto? Dann „Mit Passwort anmelden“.';
     return (e && e.message) || 'Unbekannter Fehler';
   }
 
@@ -61,6 +63,12 @@ const Online = (() => {
     const { data, error } = await sb.from('profile').select('id,name,global').eq('id', uid).maybeSingle();
     if (error) throw error;
     profil = data;
+    if (profil) ladePasswortStatus();
+  }
+
+  async function ladePasswortStatus() {
+    try { hatPasswort = !!(await rpc('hat_passwort')); } catch (_) { hatPasswort = null; }
+    renderSichern();
   }
 
   /* ---------- Captcha (Cloudflare Turnstile) gegen massenhaft angelegte Konten ----------
@@ -102,9 +110,11 @@ const Online = (() => {
   // Nach einem vergebenen Namen bleibt die Sitzung bestehen – dann ist kein neues Captcha nötig
   let hatSitzung = false;
 
-  async function anmelden(name) {
-    name = name.trim();
+  async function anmelden() {
+    const name = $('#inp-name').value.trim();
+    const passwort = $('#inp-passwort').value;
     if (name.length < 2) return toast('Bitte mindestens 2 Zeichen');
+    if (mitPasswort && !passwort) return toast('Bitte das Passwort eingeben');
     try {
       let { data: { session } } = await sb.auth.getSession();
       if (!session) {
@@ -115,15 +125,68 @@ const Online = (() => {
         session = r.data.session;
       }
       hatSitzung = true;
-      const { error } = await sb.from('profile').upsert({ id: session.user.id, name });
-      if (error) throw error;
-      profil = { id: session.user.id, name, global: !!(profil && profil.global) };
-      toast('Willkommen, ' + name + '!');
+      if (mitPasswort) {
+        // Altes Konto (mit Passwort) in diese Sitzung übernehmen – Funde, Gruppen, Bewertungen kommen mit
+        const r = await rpc('konto_uebernehmen', { p_name: name, p_passwort: passwort });
+        if (r.fehler) throw new Error(r.fehler);
+        profil = { id: r.id, name: r.name, global: !!r.global };
+        hatPasswort = true;
+        $('#inp-passwort').value = '';
+        entdeckerCache.clear();
+        kommentarCache.clear();
+        modusSetzen(false);
+        toast('Willkommen zurück, ' + r.name + '!');
+      } else {
+        const { error } = await sb.from('profile').upsert({ id: session.user.id, name });
+        if (error) throw error;
+        profil = { id: session.user.id, name, global: !!(profil && profil.global) };
+        hatPasswort = false;
+        toast('Willkommen, ' + name + '!');
+      }
       await ladeGruppen();
+      sendeWarteschlange();
     } catch (e) {
       toast('Anmeldung fehlgeschlagen: ' + fehlertext(e));
     }
     render();
+  }
+
+  function modusSetzen(an) {
+    mitPasswort = an;
+    $('#inp-passwort').hidden = !an;
+    $('#inp-name').setAttribute('autocomplete', an ? 'username' : 'nickname');
+    $('#btn-anmelden').textContent = an ? 'Anmelden' : 'Los geht’s';
+    $('#btn-modus').textContent = an ? 'Neu hier? Spielerkonto anlegen' : 'Schon ein Konto? Mit Passwort anmelden';
+    $('#anmelden-text').textContent = an
+      ? 'Melde dich mit Spielername und dem Passwort an, das du in deinem Konto festgelegt hast. Punkte, Gruppen und Bewertungen kommen mit.'
+      : 'Wähle einen Spielernamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.';
+    $('#anmelden-fuss').hidden = an;
+  }
+
+  async function passwortSpeichern() {
+    const inp = $('#inp-neues-passwort');
+    const pw = inp.value;
+    if (pw.length < 6) return toast('Das Passwort braucht mindestens 6 Zeichen');
+    try {
+      await rpc('passwort_setzen', { p_passwort: pw });
+    } catch (e) {
+      return toast('Speichern fehlgeschlagen: ' + fehlertext(e));
+    }
+    inp.value = '';
+    hatPasswort = true;
+    toast('Passwort gespeichert – anmelden kannst du dich jetzt mit „' + profil.name + '“ und diesem Passwort');
+    renderSichern();
+  }
+
+  function renderSichern() {
+    const box = $('#rang-sichern');
+    box.hidden = !profil || hatPasswort === null;
+    if (box.hidden) return;
+    box.classList.toggle('offen', !hatPasswort);
+    $('#sichern-titel').textContent = hatPasswort ? 'Passwort ändern' : '⚠️ Konto sichern';
+    $('#sichern-text').textContent = hatPasswort
+      ? 'Dein Konto ist mit einem Passwort gesichert. Auf einem anderen Gerät oder nach gelöschtem Browserspeicher: „Mit Passwort anmelden“ mit deinem Spielernamen.'
+      : 'Dein Konto hängt nur an diesem Browser. Lege ein Passwort fest, damit du dich nach gelöschtem Browserspeicher oder auf einem anderen Gerät mit Spielername und Passwort wieder anmelden kannst.';
   }
 
   async function umbenennen() {
@@ -140,7 +203,7 @@ const Online = (() => {
     try {
       await rpc('konto_loeschen');
       await sb.auth.signOut();
-      profil = null; gruppen = []; gruppe = null;
+      profil = null; gruppen = []; gruppe = null; hatPasswort = null;
       schreib(WARTESCHLANGE, []);
       toast('Konto gelöscht');
     } catch (e) {
@@ -367,6 +430,7 @@ const Online = (() => {
       return;
     }
     $('#rang-name').textContent = profil.name;
+    renderSichern();
     $('#chk-global').checked = !!profil.global;
     renderWarte();
 
@@ -525,8 +589,18 @@ const Online = (() => {
   /* ---------- Ereignisse ---------- */
 
   if (aktiv) {
-    $('#btn-anmelden').addEventListener('click', () => anmelden($('#inp-name').value));
-    $('#inp-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') anmelden(e.target.value); });
+    $('#btn-anmelden').addEventListener('click', anmelden);
+    $('#inp-name').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (mitPasswort) $('#inp-passwort').focus(); else anmelden();
+    });
+    $('#inp-passwort').addEventListener('keydown', (e) => { if (e.key === 'Enter') anmelden(); });
+    $('#btn-modus').addEventListener('click', () => {
+      modusSetzen(!mitPasswort);
+      (mitPasswort && $('#inp-name').value ? $('#inp-passwort') : $('#inp-name')).focus();
+    });
+    $('#btn-passwort').addEventListener('click', passwortSpeichern);
+    $('#inp-neues-passwort').addEventListener('keydown', (e) => { if (e.key === 'Enter') passwortSpeichern(); });
     $('#btn-erstellen').addEventListener('click', gruppeErstellen);
     $('#btn-beitreten').addEventListener('click', gruppeBeitreten);
     $('#btn-verlassen').addEventListener('click', gruppeVerlassen);

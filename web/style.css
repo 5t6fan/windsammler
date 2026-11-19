@@ -220,6 +220,9 @@ body.vollbild-an { overflow: hidden; }
 .eingabe:focus { outline: 2px solid var(--akzent); outline-offset: -1px; }
 .eingabe.code, b.code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
 .start .eingabe { margin-top: 12px; text-align: center; }
+.sichern { margin-bottom: 12px; }
+.sichern p { margin: 4px 0 10px; }
+.sichern.offen { background: color-mix(in srgb, var(--gold) 16%, var(--flaeche)); }
 .captcha { display: flex; justify-content: center; margin-top: 10px; }
 .captcha:empty { display: none; }
 a { color: var(--akzent); }
