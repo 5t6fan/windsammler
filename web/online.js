@@ -50,8 +50,9 @@ const Online = (() => {
     try {
       const { data } = await sb.auth.getSession();
       if (data.session) {
-        await ladeProfil(data.session.user.id);
-        await ladeGruppen();
+        await ladeProfil();
+        if (profil) await ladeGruppen();
+        else await toteSitzungVerwerfen();
       }
     } catch (_) { /* offline – später erneut */ }
     render();
@@ -59,8 +60,9 @@ const Online = (() => {
     window.addEventListener('online', sendeWarteschlange);
   }
 
-  async function ladeProfil(uid) {
-    const { data, error } = await sb.from('profile').select('id,name,global').eq('id', uid).maybeSingle();
+  // Profil dieser Sitzung – das eigene oder (nach Anmeldung mit Passwort) das verknüpfte; die Zugriffsregel liefert nur dieses
+  async function ladeProfil() {
+    const { data, error } = await sb.from('profile').select('id,name,global').maybeSingle();
     if (error) throw error;
     profil = data;
     if (profil) { ladePasswortStatus(); abgleichen(); }
@@ -69,6 +71,16 @@ const Online = (() => {
   // Online gewertete Funde ins lokale Sammelheft (app.js) übernehmen
   async function abgleichen() {
     try { heftAbgleichen(await rpc('meine_funde') || []); } catch (_) { /* offline – beim nächsten Start */ }
+  }
+
+  // Sitzung, deren Nutzer es auf dem Server nicht mehr gibt (Konto gelöscht o. Ä.), lokal verwerfen –
+  // sonst scheitert jede Anmeldung. Danach wird eine neue Sitzung (mit Captcha) angelegt.
+  async function toteSitzungVerwerfen() {
+    const { error } = await sb.auth.getUser();
+    if (!error || !(error.status >= 400 && error.status < 500)) return false;
+    await sb.auth.signOut({ scope: 'local' });
+    hatSitzung = false;
+    return true;
   }
 
   async function ladePasswortStatus() {
@@ -152,7 +164,10 @@ const Online = (() => {
       sendeWarteschlange();
       abgleichen();
     } catch (e) {
-      toast('Anmeldung fehlgeschlagen: ' + fehlertext(e));
+      if (await toteSitzungVerwerfen().catch(() => false)) {
+        toast('Sitzung war abgelaufen – bitte Sicherheitsprüfung abwarten und noch einmal anmelden');
+        captchaZuruecksetzen();
+      } else toast('Anmeldung fehlgeschlagen: ' + fehlertext(e));
     }
     render();
   }

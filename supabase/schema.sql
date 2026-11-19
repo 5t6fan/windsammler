@@ -131,6 +131,15 @@ create table if not exists public.login_fehler (
 create index if not exists login_fehler_name on public.login_fehler (name, zeit);
 create index if not exists login_fehler_nutzer on public.login_fehler (nutzer, zeit);
 
+-- Weitere Sitzungen (Browser, Geräte), die mit Spielername + Passwort an ein Profil angemeldet sind.
+-- Das Profil behält seine ID; jede Sitzung ist ein eigener anonymer Supabase-Nutzer.
+create table if not exists public.geraete (
+  sitzung uuid primary key references auth.users (id) on delete cascade,
+  profil  uuid not null references public.profile (id) on delete cascade,
+  seit    timestamptz not null default now()
+);
+create index if not exists geraete_profil on public.geraete (profil);
+
 create index if not exists funde_anlage_zeit on public.funde (anlage, zeit);
 create index if not exists funde_nutzer_zeit on public.funde (nutzer, zeit desc);
 create index if not exists mitglieder_nutzer on public.mitglieder (nutzer);
@@ -151,16 +160,24 @@ alter table public.blockiert  enable row level security;
 alter table public.admins     enable row level security;
 alter table public.passwoerter enable row level security;
 alter table public.login_fehler enable row level security;
+alter table public.geraete    enable row level security;
+
+-- Spielerprofil der aktuellen Sitzung: verknüpftes Profil (geraete) oder das eigene
+create or replace function public.ich()
+returns uuid language sql stable security definer set search_path = '' as $$
+  select coalesce((select g.profil from public.geraete g where g.sitzung = auth.uid()), auth.uid())
+$$;
 
 drop policy if exists profil_lesen on public.profile;
 drop policy if exists profil_anlegen on public.profile;
 drop policy if exists profil_aendern on public.profile;
 drop policy if exists funde_lesen on public.funde;
 
-create policy profil_lesen   on public.profile for select to authenticated using (id = auth.uid());
-create policy profil_anlegen on public.profile for insert to authenticated with check (id = auth.uid());
-create policy profil_aendern on public.profile for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
-create policy funde_lesen    on public.funde   for select to authenticated using (nutzer = auth.uid());
+create policy profil_lesen   on public.profile for select to authenticated using (id = public.ich());
+create policy profil_anlegen on public.profile for insert to authenticated
+  with check (id = auth.uid() and public.ich() = auth.uid());   -- nicht für verknüpfte Sitzungen
+create policy profil_aendern on public.profile for update to authenticated using (id = public.ich()) with check (id = public.ich());
+create policy funde_lesen    on public.funde   for select to authenticated using (nutzer = public.ich());
 
 -- ---------------------------------------------------------------- Hilfsfunktionen
 
@@ -173,7 +190,7 @@ $$;
 
 create or replace function public._nutzer()
 returns uuid language plpgsql stable set search_path = '' as $$
-declare v uuid := auth.uid();
+declare v uuid := public.ich();
 begin
   if v is null then raise exception 'Nicht angemeldet'; end if;
   if not exists (select 1 from public.profile where id = v) then raise exception 'Kein Spielerprofil'; end if;
@@ -278,20 +295,20 @@ end $$;
 create or replace function public.mein_stand()
 returns jsonb language sql stable security definer set search_path = '' as $$
   select jsonb_build_object('punkte', coalesce(sum(punkte), 0), 'anlagen', count(*))
-    from public.funde where nutzer = auth.uid()
+    from public.funde where nutzer = public.ich()
 $$;
 
 -- Erster Finder einer Anlage – nur unter Personen, mit denen man eine Gruppe teilt
 create or replace function public.entdecker(p_anlage text)
 returns table (name text, zeit timestamptz, ich boolean)
 language sql stable security definer set search_path = '' as $$
-  select p.name, f.zeit, f.nutzer = auth.uid()
+  select p.name, f.zeit, f.nutzer = public.ich()
     from public.funde f join public.profile p on p.id = f.nutzer
    where f.anlage = p_anlage
-     and (f.nutzer = auth.uid() or f.nutzer in (
+     and (f.nutzer = public.ich() or f.nutzer in (
           select m2.nutzer from public.mitglieder m1
             join public.mitglieder m2 on m2.gruppe = m1.gruppe
-           where m1.nutzer = auth.uid()))
+           where m1.nutzer = public.ich()))
    order by f.zeit
    limit 1
 $$;
@@ -302,20 +319,20 @@ $$;
 create or replace function public.erstfinder(p_anlage text)
 returns jsonb language sql stable security definer set search_path = '' as $$
   with sicht as (
-    select m2.nutzer from public.mitglieder m1 join public.mitglieder m2 on m2.gruppe = m1.gruppe where m1.nutzer = auth.uid()
+    select m2.nutzer from public.mitglieder m1 join public.mitglieder m2 on m2.gruppe = m1.gruppe where m1.nutzer = public.ich()
   ), e as (
     select f.nutzer, f.zeit from public.funde f where f.anlage = p_anlage order by f.zeit limit 1
   ), b as (
     select f.nutzer, f.beruehrt as zeit from public.funde f where f.anlage = p_anlage and f.beruehrt is not null order by f.beruehrt limit 1
   )
   select jsonb_build_object(
-    'entdeckt', (select jsonb_build_object('zeit', e.zeit, 'ich', e.nutzer = auth.uid(),
-                   'name', case when e.nutzer = auth.uid() or p.global or e.nutzer in (select nutzer from sicht) then p.name end)
+    'entdeckt', (select jsonb_build_object('zeit', e.zeit, 'ich', e.nutzer = public.ich(),
+                   'name', case when e.nutzer = public.ich() or p.global or e.nutzer in (select nutzer from sicht) then p.name end)
                  from e join public.profile p on p.id = e.nutzer),
-    'beruehrt', (select jsonb_build_object('zeit', b.zeit, 'ich', b.nutzer = auth.uid(),
-                   'name', case when b.nutzer = auth.uid() or p.global or b.nutzer in (select nutzer from sicht) then p.name end)
+    'beruehrt', (select jsonb_build_object('zeit', b.zeit, 'ich', b.nutzer = public.ich(),
+                   'name', case when b.nutzer = public.ich() or p.global or b.nutzer in (select nutzer from sicht) then p.name end)
                  from b join public.profile p on p.id = b.nutzer))
-  where auth.uid() is not null
+  where public.ich() is not null
 $$;
 
 -- ---------------------------------------------------------------- Gruppen
@@ -382,7 +399,7 @@ language sql stable security definer set search_path = '' as $$
   select g.id, g.name, g.code,
          (select count(*)::int from public.mitglieder x where x.gruppe = g.id)
     from public.mitglieder m join public.gruppen g on g.id = m.gruppe
-   where m.nutzer = auth.uid()
+   where m.nutzer = public.ich()
    order by m.beigetreten
 $$;
 
@@ -393,7 +410,7 @@ create or replace function public.rangliste(p_gruppe uuid, p_seit timestamptz de
 returns table (name text, punkte bigint, anlagen bigint, modelle bigint, beruehrt bigint, ich boolean)
 language plpgsql stable security definer set search_path = '' as $$
 begin
-  if not exists (select 1 from public.mitglieder where gruppe = p_gruppe and nutzer = auth.uid()) then
+  if not exists (select 1 from public.mitglieder where gruppe = p_gruppe and nutzer = public.ich()) then
     raise exception 'Kein Mitglied dieser Gruppe';
   end if;
   return query
@@ -402,7 +419,7 @@ begin
            count(f.anlage),
            count(distinct (a.marke, a.modell)) filter (where a.modell is not null),
            count(f.beruehrt),
-           p.id = auth.uid()
+           p.id = public.ich()
       from public.mitglieder m
       join public.profile p on p.id = m.nutzer
       left join public.funde f on f.nutzer = m.nutzer
@@ -428,15 +445,15 @@ language sql stable security definer set search_path = '' as $$
       left join public.funde f on f.nutzer = p.id
             and (p_seit is null or f.zeit >= p_seit) and (p_bis is null or f.zeit < p_bis)
       left join public.anlagen a on a.id = f.anlage
-     where auth.uid() is not null and (p.global or p.id = auth.uid())
+     where public.ich() is not null and (p.global or p.id = public.ich())
      group by p.id, p.name, p.global
   ), r as (
     select w.*, rank() over (order by w.punkte desc) as platz,
            row_number() over (order by w.punkte desc, w.anlagen desc, w.name) as nr
-      from w where w.punkte > 0 or w.id = auth.uid()
+      from w where w.punkte > 0 or w.id = public.ich()
   )
-  select r.platz, r.name, r.punkte, r.anlagen, r.modelle, r.beruehrt, r.id = auth.uid(), r.global
-    from r where r.nr <= 100 or r.id = auth.uid()
+  select r.platz, r.name, r.punkte, r.anlagen, r.modelle, r.beruehrt, r.id = public.ich(), r.global
+    from r where r.nr <= 100 or r.id = public.ich()
    order by r.nr
 $$;
 
@@ -452,7 +469,7 @@ language sql stable security definer set search_path = '' as $$
            select 1 from public.funde e where e.anlage = f.anlage and e.beruehrt < f.beruehrt),
          a.marke, a.modell, a.kw, a.nabe, a.ibn, a.lat, a.lon
     from public.funde f join public.anlagen a on a.id = f.anlage
-   where f.nutzer = auth.uid()
+   where f.nutzer = public.ich()
 $$;
 
 -- Profil eines Spielers: Zahlen, Abzeichen, Hersteller, Raritäten – bewusst ohne Orte und Funddaten.
@@ -532,14 +549,14 @@ end $$;
 create or replace function public.kommentare_lesen(p_anlage text)
 returns table (id uuid, name text, sterne smallint, text text, zeit timestamptz, ich boolean, gemeldet boolean)
 language sql stable security definer set search_path = '' as $$
-  select k.id, p.name, k.sterne, k.text, k.zeit, k.nutzer = auth.uid(),
-         exists (select 1 from public.meldungen m where m.kommentar = k.id and m.nutzer = auth.uid())
+  select k.id, p.name, k.sterne, k.text, k.zeit, k.nutzer = public.ich(),
+         exists (select 1 from public.meldungen m where m.kommentar = k.id and m.nutzer = public.ich())
     from public.kommentare k join public.profile p on p.id = k.nutzer
    where k.anlage = p_anlage
-     and auth.uid() is not null
-     and (k.nutzer = auth.uid() or (select count(*) from public.meldungen m where m.kommentar = k.id) < 3)
-     and not exists (select 1 from public.blockiert b where b.nutzer = auth.uid() and b.blockiert = k.nutzer)
-   order by k.nutzer = auth.uid() desc, k.zeit desc
+     and public.ich() is not null
+     and (k.nutzer = public.ich() or (select count(*) from public.meldungen m where m.kommentar = k.id) < 3)
+     and not exists (select 1 from public.blockiert b where b.nutzer = public.ich() and b.blockiert = k.nutzer)
+   order by k.nutzer = public.ich() desc, k.zeit desc
    limit 100
 $$;
 
@@ -565,7 +582,7 @@ end $$;
 
 create or replace function public.kommentar_loeschen(p_anlage text)
 returns void language sql security definer set search_path = '' as $$
-  delete from public.kommentare where nutzer = auth.uid() and anlage = p_anlage
+  delete from public.kommentare where nutzer = public.ich() and anlage = p_anlage
 $$;
 
 create or replace function public.kommentar_melden(p_kommentar uuid)
@@ -597,20 +614,20 @@ returns table (id uuid, name text, zeit timestamptz)
 language sql stable security definer set search_path = '' as $$
   select b.id, p.name, b.zeit
     from public.blockiert b join public.profile p on p.id = b.blockiert
-   where b.nutzer = auth.uid()
+   where b.nutzer = public.ich()
    order by b.zeit desc
 $$;
 
 create or replace function public.entblocken(p_id uuid)
 returns void language sql security definer set search_path = '' as $$
-  delete from public.blockiert where id = p_id and nutzer = auth.uid()
+  delete from public.blockiert where id = p_id and nutzer = public.ich()
 $$;
 
 -- ---------------------------------------------------------------- Admin (nur für Konten in public.admins)
 
 create or replace function public._admin()
 returns uuid language plpgsql stable security definer set search_path = '' as $$
-declare v uuid := auth.uid();
+declare v uuid := public.ich();
 begin
   if v is null or not exists (select 1 from public.admins where nutzer = v) then raise exception 'Keine Berechtigung'; end if;
   return v;
@@ -618,7 +635,7 @@ end $$;
 
 create or replace function public.admin_ist()
 returns boolean language sql stable security definer set search_path = '' as $$
-  select exists (select 1 from public.admins where nutzer = auth.uid())
+  select exists (select 1 from public.admins where nutzer = public.ich())
 $$;
 
 create or replace function public.admin_uebersicht()
@@ -702,6 +719,7 @@ declare v_admin uuid := public._admin();
 begin
   if p_nutzer = v_admin then raise exception 'Das eigene Konto bitte über „Konto löschen“ in der App löschen'; end if;
   if exists (select 1 from public.admins where nutzer = p_nutzer) then raise exception 'Admin-Konten zuerst aus public.admins entfernen'; end if;
+  delete from auth.users where id in (select sitzung from public.geraete where profil = p_nutzer);
   delete from auth.users where id = p_nutzer;
   delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
 end $$;
@@ -710,17 +728,18 @@ end $$;
 
 create or replace function public.konto_loeschen()
 returns void language plpgsql security definer set search_path = '' as $$
-declare v_uid uuid := auth.uid();
+declare v_uid uuid := public.ich();
 begin
   if v_uid is null then raise exception 'Nicht angemeldet'; end if;
+  delete from auth.users where id in (select sitzung from public.geraete where profil = v_uid);
   delete from auth.users where id = v_uid;  -- Profil, Funde und Mitgliedschaften folgen per CASCADE
   delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
 end $$;
 
--- ---------------------------------------------------------------- Passwort & Konto wiederherstellen
--- Konten sind anonym und hängen am Browser-/App-Speicher. Wer ein Passwort festlegt, kann sich später
--- in einer neuen (anonymen) Sitzung mit Spielername + Passwort anmelden: Alle Daten des alten Kontos
--- wandern dann ins neue, das alte wird gelöscht.
+-- ---------------------------------------------------------------- Passwort & Anmeldung auf weiteren Geräten
+-- Konten sind anonym und hängen am Browser-/App-Speicher. Wer ein Passwort festlegt, kann sich in jeder
+-- weiteren (anonymen) Sitzung mit Spielername + Passwort anmelden: Die Sitzung wird mit dem Profil
+-- verknüpft (public.geraete), alle Geräte bleiben gleichzeitig angemeldet.
 
 create or replace function public.passwort_setzen(p_passwort text)
 returns void language plpgsql security definer set search_path = '' as $$
@@ -734,67 +753,64 @@ end $$;
 
 create or replace function public.hat_passwort()
 returns boolean language sql stable security definer set search_path = '' as $$
-  select exists (select 1 from public.passwoerter where nutzer = auth.uid())
+  select exists (select 1 from public.passwoerter where nutzer = public.ich())
 $$;
 
 create or replace function public.konto_uebernehmen(p_name text, p_passwort text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
-  v_neu  uuid := auth.uid();
+  v_sitz uuid := auth.uid();
   v_key  text := lower(btrim(coalesce(p_name, '')));
   alt    record;
+  ziel   uuid;
 begin
-  if v_neu is null then raise exception 'Nicht angemeldet'; end if;
+  if v_sitz is null then raise exception 'Nicht angemeldet'; end if;
+  if not exists (select 1 from auth.users where id = v_sitz) then raise exception 'Sitzung abgelaufen – bitte neu laden'; end if;
   if (select count(*) from public.login_fehler where name = v_key and zeit > now() - interval '15 minutes') >= 5
-     or (select count(*) from public.login_fehler where nutzer = v_neu and zeit > now() - interval '1 hour') >= 20 then
+     or (select count(*) from public.login_fehler where nutzer = v_sitz and zeit > now() - interval '1 hour') >= 20 then
     return jsonb_build_object('fehler', 'Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen');
   end if;
 
-  select p.id, p.name, p.global, p.erstellt, w.hash into alt
+  select p.id, p.name, p.global, w.hash into alt
     from public.profile p join public.passwoerter w on w.nutzer = p.id
    where lower(btrim(p.name)) = v_key;
   if not found or alt.hash <> extensions.crypt(coalesce(p_passwort, ''), alt.hash) then
-    insert into public.login_fehler (name, nutzer) values (v_key, v_neu);
+    insert into public.login_fehler (name, nutzer) values (v_key, v_sitz);
     return jsonb_build_object('fehler', 'Spielername oder Passwort falsch');
   end if;
-  if alt.id = v_neu then
-    return jsonb_build_object('id', alt.id, 'name', alt.name, 'global', alt.global);
+  ziel := alt.id;
+
+  -- Hatte diese Sitzung schon ein eigenes Profil (z. B. Ersatzkonto „Name 2“), dessen Daten übernehmen
+  if v_sitz <> ziel and exists (select 1 from public.profile where id = v_sitz) then
+    update public.funde n
+       set zeit = least(n.zeit, a.zeit), punkte = greatest(n.punkte, a.punkte), beruehrt = least(n.beruehrt, a.beruehrt)
+      from public.funde a
+     where a.nutzer = v_sitz and n.nutzer = ziel and n.anlage = a.anlage;
+    update public.funde a set nutzer = ziel
+     where a.nutzer = v_sitz and not exists (select 1 from public.funde n where n.nutzer = ziel and n.anlage = a.anlage);
+    update public.mitglieder a set nutzer = ziel
+     where a.nutzer = v_sitz and not exists (select 1 from public.mitglieder n where n.nutzer = ziel and n.gruppe = a.gruppe);
+    update public.kommentare a set nutzer = ziel
+     where a.nutzer = v_sitz and not exists (select 1 from public.kommentare n where n.nutzer = ziel and n.anlage = a.anlage);
+    update public.meldungen a set nutzer = ziel
+     where a.nutzer = v_sitz and not exists (select 1 from public.meldungen n where n.nutzer = ziel and n.kommentar = a.kommentar);
+    update public.blockiert a set nutzer = ziel
+     where a.nutzer = v_sitz and not exists (select 1 from public.blockiert n where n.nutzer = ziel and n.blockiert = a.blockiert);
+    update public.blockiert a set blockiert = ziel
+     where a.blockiert = v_sitz and not exists (select 1 from public.blockiert n where n.blockiert = ziel and n.nutzer = a.nutzer);
+    delete from public.blockiert where nutzer = blockiert;
+    update public.gruppen set erstellt_von = ziel where erstellt_von = v_sitz;
+    -- Weitere Sitzungen, die an diesem Ersatzprofil hingen, mitnehmen
+    update public.geraete set profil = ziel where profil = v_sitz;
+    delete from public.profile where id = v_sitz;   -- Reste (Doppelungen, Passwort) per CASCADE
   end if;
 
-  -- Profil für die neue Sitzung (vorläufiger Name, falls hier noch keins existiert)
-  insert into public.profile (id, name) values (v_neu, '~' || left(replace(v_neu::text, '-', ''), 20))
-  on conflict (id) do nothing;
-
-  -- Funde: doppelte Anlagen zusammenführen (früheste Zeit, höhere Punkte), Rest umhängen
-  update public.funde n
-     set zeit = least(n.zeit, a.zeit), punkte = greatest(n.punkte, a.punkte), beruehrt = least(n.beruehrt, a.beruehrt)
-    from public.funde a
-   where a.nutzer = alt.id and n.nutzer = v_neu and n.anlage = a.anlage;
-  update public.funde a set nutzer = v_neu
-   where a.nutzer = alt.id and not exists (select 1 from public.funde n where n.nutzer = v_neu and n.anlage = a.anlage);
-
-  update public.mitglieder a set nutzer = v_neu
-   where a.nutzer = alt.id and not exists (select 1 from public.mitglieder n where n.nutzer = v_neu and n.gruppe = a.gruppe);
-  update public.kommentare a set nutzer = v_neu
-   where a.nutzer = alt.id and not exists (select 1 from public.kommentare n where n.nutzer = v_neu and n.anlage = a.anlage);
-  update public.meldungen a set nutzer = v_neu
-   where a.nutzer = alt.id and not exists (select 1 from public.meldungen n where n.nutzer = v_neu and n.kommentar = a.kommentar);
-  update public.blockiert a set nutzer = v_neu
-   where a.nutzer = alt.id and not exists (select 1 from public.blockiert n where n.nutzer = v_neu and n.blockiert = a.blockiert);
-  update public.blockiert a set blockiert = v_neu
-   where a.blockiert = alt.id and not exists (select 1 from public.blockiert n where n.blockiert = v_neu and n.nutzer = a.nutzer);
-  delete from public.blockiert where nutzer = blockiert;
-  update public.gruppen set erstellt_von = v_neu where erstellt_von = alt.id;
-  update public.admins a set nutzer = v_neu
-   where a.nutzer = alt.id and not exists (select 1 from public.admins n where n.nutzer = v_neu);
-  delete from public.passwoerter where nutzer = v_neu;
-  update public.passwoerter set nutzer = v_neu where nutzer = alt.id;
-
-  -- Altes Konto löschen (übrig gebliebene Doppelungen folgen per CASCADE), dann Name übernehmen
-  delete from auth.users where id = alt.id;
-  update public.profile set name = alt.name, global = alt.global, erstellt = least(erstellt, alt.erstellt) where id = v_neu;
+  if v_sitz <> ziel then
+    insert into public.geraete (sitzung, profil) values (v_sitz, ziel)
+    on conflict (sitzung) do update set profil = excluded.profil, seit = now();
+  end if;
   delete from public.login_fehler where name = v_key;
-  return jsonb_build_object('id', v_neu, 'name', alt.name, 'global', alt.global);
+  return jsonb_build_object('id', ziel, 'name', alt.name, 'global', alt.global);
 end $$;
 
 -- ---------------------------------------------------------------- Aufräumen (nächtlich per pg_cron)
@@ -805,7 +821,8 @@ create or replace function public.aufraeumen()
 returns void language sql security definer set search_path = '' as $$
   delete from auth.users u
    where u.is_anonymous and u.created_at < now() - interval '1 day'
-     and not exists (select 1 from public.profile p where p.id = u.id);
+     and not exists (select 1 from public.profile p where p.id = u.id)
+     and not exists (select 1 from public.geraete g where g.sitzung = u.id);
   delete from public.beitritt_fehler where zeit < now() - interval '1 day';
   delete from public.login_fehler where zeit < now() - interval '1 day';
   delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
@@ -853,6 +870,7 @@ grant execute on function
   public.passwort_setzen(text),
   public.hat_passwort(),
   public.konto_uebernehmen(text, text),
+  public.ich(),
   public.spieler_profil(text),
   public.meine_funde()
 to authenticated;

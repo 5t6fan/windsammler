@@ -70,9 +70,10 @@ function Anmelden() {
         zeige('Willkommen, ' + name.trim() + '!');
       }
     } catch (e) {
-      setFehler(Online.fehlertext(e));
-      if (await Online.hatSitzung()) setSitzung(true);
-      else { setToken(null); setCaptchaNr((n) => n + 1); }   // ein Token gilt nur einmal
+      const tot = await Online.toteSitzungVerwerfen().catch(() => false);
+      setFehler(tot ? 'Sitzung war abgelaufen – bitte Sicherheitsprüfung abwarten und noch einmal anmelden' : Online.fehlertext(e));
+      if (!tot && await Online.hatSitzung()) setSitzung(true);
+      else { setSitzung(false); setToken(null); setCaptchaNr((n) => n + 1); }   // ein Token gilt nur einmal
     }
     setLaeuft(false);
   };

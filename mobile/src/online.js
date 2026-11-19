@@ -56,8 +56,9 @@ export async function starte() {
   try {
     const { data } = await sb.auth.getSession();
     if (data.session) {
-      await ladeProfil(data.session.user.id);
-      await ladeGruppen();
+      await ladeProfil();
+      if (zustand.profil) await ladeGruppen();
+      else await toteSitzungVerwerfen();
     }
   } catch (_) { /* offline – später erneut */ }
   setze({ bereit: true });
@@ -69,11 +70,20 @@ AppState.addEventListener('change', (s) => {
   if (s === 'active') { sb.auth.startAutoRefresh(); sendeWarteschlange(); } else sb.auth.stopAutoRefresh();
 });
 
-async function ladeProfil(uid) {
-  const { data, error } = await sb.from('profile').select('id,name,global').eq('id', uid).maybeSingle();
+// Profil dieser Sitzung – das eigene oder (nach Anmeldung mit Passwort) das verknüpfte; die Zugriffsregel liefert nur dieses
+async function ladeProfil() {
+  const { data, error } = await sb.from('profile').select('id,name,global').maybeSingle();
   if (error) throw error;
   setze({ profil: data });
   if (data) ladePasswortStatus();
+}
+
+// Sitzung, deren Nutzer es auf dem Server nicht mehr gibt, lokal verwerfen – sonst scheitert jede Anmeldung
+export async function toteSitzungVerwerfen() {
+  const { error } = await sb.auth.getUser();
+  if (!error || !(error.status >= 400 && error.status < 500)) return false;
+  await sb.auth.signOut({ scope: 'local' });
+  return true;
 }
 
 async function ladePasswortStatus() {
