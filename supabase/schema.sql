@@ -440,6 +440,92 @@ language sql stable security definer set search_path = '' as $$
    order by r.nr
 $$;
 
+-- Eigene online gewertete Funde – damit das lokale Sammelheft nach einer Anmeldung auf einem neuen
+-- Gerät (oder nach gelöschtem Speicher) wiederhergestellt werden kann. Anlagendaten für abgebaute Anlagen.
+create or replace function public.meine_funde()
+returns table (anlage text, zeit timestamptz, beruehrt timestamptz, erst boolean, erst_b boolean,
+               marke text, modell text, kw real, nabe real, ibn date, lat float8, lon float8)
+language sql stable security definer set search_path = '' as $$
+  select f.anlage, f.zeit, f.beruehrt,
+         not exists (select 1 from public.funde e where e.anlage = f.anlage and e.zeit < f.zeit),
+         f.beruehrt is not null and not exists (
+           select 1 from public.funde e where e.anlage = f.anlage and e.beruehrt < f.beruehrt),
+         a.marke, a.modell, a.kw, a.nabe, a.ibn, a.lat, a.lon
+    from public.funde f join public.anlagen a on a.id = f.anlage
+   where f.nutzer = auth.uid()
+$$;
+
+-- Profil eines Spielers: Zahlen, Abzeichen, Hersteller, Raritäten – bewusst ohne Orte und Funddaten.
+-- Sichtbar wie in der Rangliste: man selbst, Mitglieder gemeinsamer Gruppen und global sichtbare Spieler.
+-- Abzeichen nur, soweit aus den online gewerteten Funden berechenbar (Schlüssel wie ABZEICHEN in app.js).
+create or replace function public.spieler_profil(p_name text)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_ich uuid := public._nutzer();
+  p     public.profile;
+  r     jsonb;
+begin
+  select * into p from public.profile where lower(btrim(name)) = lower(btrim(coalesce(p_name, '')));
+  if not found or not (p.id = v_ich or p.global or exists (
+       select 1 from public.mitglieder m1 join public.mitglieder m2 on m2.gruppe = m1.gruppe
+        where m1.nutzer = v_ich and m2.nutzer = p.id)) then
+    return jsonb_build_object('fehler', 'Dieses Profil ist für dich nicht sichtbar');
+  end if;
+
+  with f as (
+    select f.punkte, f.beruehrt, a.marke, a.modell, a.kw, a.nabe, a.ibn, a.selten,
+           not exists (select 1 from public.funde e where e.anlage = f.anlage and e.zeit < f.zeit) as erst,
+           f.beruehrt is not null and not exists (
+             select 1 from public.funde e where e.anlage = f.anlage and e.beruehrt < f.beruehrt) as erst_b
+      from public.funde f join public.anlagen a on a.id = f.anlage
+     where f.nutzer = p.id
+  ), z as (
+    select count(*) as anlagen, coalesce(sum(punkte), 0) as punkte,
+           count(distinct marke) as hersteller,
+           count(distinct (marke, modell)) filter (where modell is not null) as modelle,
+           coalesce(sum(kw), 0) as kw, count(beruehrt) as beruehrt,
+           coalesce(bool_or(ibn < date '2000-01-01'), false) as alt,
+           coalesce(bool_or(nabe >= 160), false) as riese,
+           coalesce(bool_or(nabe < 50), false) as zwerg,
+           coalesce(bool_or(selten), false) as selten,
+           coalesce(bool_or(erst), false) as pionier,
+           coalesce(bool_or(erst_b), false) as erstkontakt
+      from f
+  )
+  select jsonb_build_object(
+    'name', p.name, 'ich', p.id = v_ich, 'seit', p.erstellt,
+    'punkte', z.punkte, 'anlagen', z.anlagen, 'hersteller', z.hersteller, 'modelle', z.modelle,
+    'kw', z.kw, 'beruehrt', z.beruehrt,
+    'abzeichen', to_jsonb(array_remove(array[
+      case when z.anlagen >= 1 then 'erster' end,
+      case when z.anlagen >= 10 then 'a10' end,
+      case when z.anlagen >= 50 then 'a50' end,
+      case when z.anlagen >= 100 then 'a100' end,
+      case when z.hersteller >= 3 then 'm3' end,
+      case when z.hersteller >= 6 then 'm6' end,
+      case when z.modelle >= 10 then 't10' end,
+      case when z.modelle >= 25 then 't25' end,
+      case when z.alt then 'alt' end,
+      case when z.riese then 'riese' end,
+      case when z.zwerg then 'zwerg' end,
+      case when z.selten then 'selten' end,
+      case when z.kw >= 100000 then 'mw100' end,
+      case when z.beruehrt >= 1 then 'b1' end,
+      case when z.beruehrt >= 10 then 'b10' end,
+      case when z.pionier then 'pionier' end,
+      case when z.erstkontakt then 'erstkontakt' end
+    ], null)),
+    'marken', (select coalesce(jsonb_agg(jsonb_build_object('marke', m.marke, 'anlagen', m.n, 'modelle', m.mod)
+                                         order by m.n desc, m.marke), '[]'::jsonb)
+                 from (select marke, count(*) as n, count(distinct modell) as mod
+                         from f where marke is not null group by marke) m),
+    'raritaeten', (select coalesce(jsonb_agg(x.t order by x.t), '[]'::jsonb)
+                     from (select distinct marke || ' ' || modell as t from f
+                            where selten and marke is not null and modell is not null) x)
+  ) into r from z;
+  return r;
+end $$;
+
 -- ---------------------------------------------------------------- Kommentare
 
 -- Kommentare zu einer Anlage; ab 3 Meldungen sieht einen Kommentar nur noch der Verfasser
@@ -766,5 +852,7 @@ grant execute on function
   public.konto_loeschen(),
   public.passwort_setzen(text),
   public.hat_passwort(),
-  public.konto_uebernehmen(text, text)
+  public.konto_uebernehmen(text, text),
+  public.spieler_profil(text),
+  public.meine_funde()
 to authenticated;

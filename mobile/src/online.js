@@ -279,6 +279,15 @@ export async function rangliste(gruppe, p) {
 }
 
 export const meinStand = () => rpc('mein_stand');
+// Eigene online gewertete Funde (zum Wiederherstellen des Sammelhefts)
+export const meineFunde = async () => (await rpc('meine_funde')) || [];
+
+// Profil eines Spielers aus der Rangliste: Zahlen, Abzeichen, Hersteller, Raritäten (ohne Orte und Daten)
+export async function spielerProfil(name) {
+  const p = await rpc('spieler_profil', { p_name: name });
+  if (p.fehler) throw new Error(p.fehler);
+  return p;
+}
 
 /* ---------- Bewertungen & Blockieren ---------- */
 

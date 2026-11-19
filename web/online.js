@@ -63,7 +63,12 @@ const Online = (() => {
     const { data, error } = await sb.from('profile').select('id,name,global').eq('id', uid).maybeSingle();
     if (error) throw error;
     profil = data;
-    if (profil) ladePasswortStatus();
+    if (profil) { ladePasswortStatus(); abgleichen(); }
+  }
+
+  // Online gewertete Funde ins lokale Sammelheft (app.js) übernehmen
+  async function abgleichen() {
+    try { heftAbgleichen(await rpc('meine_funde') || []); } catch (_) { /* offline – beim nächsten Start */ }
   }
 
   async function ladePasswortStatus() {
@@ -145,6 +150,7 @@ const Online = (() => {
       }
       await ladeGruppen();
       sendeWarteschlange();
+      abgleichen();
     } catch (e) {
       toast('Anmeldung fehlgeschlagen: ' + fehlertext(e));
     }
@@ -358,7 +364,8 @@ const Online = (() => {
     const medaille = z.punkte > 0 ? ({ 1: '🥇', 2: '🥈', 3: '🥉' }[platz] || platz) : platz;
     const unter = [fmt0.format(z.anlagen) + ' Anlagen', fmt0.format(z.modelle) + ' Modelle'];
     if (z.beruehrt) unter.push(fmt0.format(z.beruehrt) + ' 🤚');
-    return '<li' + (z.ich ? ' class="ich"' : '') + '><span class="platz">' + medaille + '</span>' +
+    return '<li data-name="' + esc(z.name) + '"' + (z.ich ? ' class="ich"' : '') + ' role="button" tabindex="0" aria-label="Profil von ' + esc(z.name) + '">' +
+      '<span class="platz">' + medaille + '</span>' +
       '<span class="li-text"><div class="li-titel">' + esc(z.name) + (z.ich ? ' (du)' : '') + '</div>' +
       '<div class="li-unter">' + unter.join(' · ') + '</div></span>' +
       '<span class="li-dist">' + fmt0.format(z.punkte) + '<small>Punkte</small></span></li>';
@@ -448,6 +455,39 @@ const Online = (() => {
     $('#rang-global-hinweis').hidden = !global || profil.global;
     $('#rang-global-hinweis').textContent = 'Die globale Rangliste zeigt alle, die sich freigeschaltet haben. Du selbst bist dort nur für dich sichtbar – schalte oben „In der globalen Rangliste zeigen“ ein, damit andere dich sehen.';
     ladeRangliste();
+  }
+
+  /* ---------- Spielerprofil (aus der Rangliste antippen) ----------
+   * Zeigt Zahlen, Abzeichen, Hersteller und Raritäten – keine Orte und keine Funddaten. */
+
+  async function profilZeigen(name) {
+    let p;
+    try {
+      p = await rpc('spieler_profil', { p_name: name });
+      if (p.fehler) throw new Error(p.fehler);
+    } catch (e) {
+      return toast('Profil nicht ladbar: ' + fehlertext(e));
+    }
+    const zahlen = [
+      [fmt0.format(p.punkte), 'Punkte'], [fmt0.format(p.anlagen), 'Anlagen'], [fmt0.format(p.hersteller), 'Hersteller'],
+      [fmt0.format(p.modelle), 'Modelle'], [fmt.format(p.kw / 1000), 'MW'], [fmt0.format(p.beruehrt), '🤚 berührt'],
+    ].map(([z, t]) => '<div class="zahl"><b>' + z + '</b><span>' + t + '</span></div>').join('');
+    const abz = ABZEICHEN.filter((a) => p.abzeichen.includes(a.k));
+    const marken = p.marken.map((m) => '<li><b>' + esc(m.marke) + '</b> · ' + fmt0.format(m.anlagen) + ' Anlage' + (m.anlagen === 1 ? '' : 'n') +
+      ' · ' + fmt0.format(m.modelle) + ' Modell' + (m.modelle === 1 ? '' : 'e') + '</li>').join('');
+    zeigeSheet((p.ich ? '👤 ' + p.name + ' (du)' : '👤 ' + p.name),
+      '<p class="leise klein">Dabei seit ' + datum(Date.parse(p.seit)) + '</p>' +
+      '<div class="zahlen drei">' + zahlen + '</div>' +
+      '<h4 class="sheet-unter">Abzeichen · ' + abz.length + '</h4>' +
+      (abz.length
+        ? '<div class="abzeichen">' + abz.map((a) => '<div class="abz"><div class="ico">' + a.ico + '</div><b>' + esc(a.name) +
+            '</b><small>' + esc(a.text) + '</small></div>').join('') + '</div>'
+        : '<p class="leise">Noch keine Abzeichen.</p>') +
+      (marken ? '<h4 class="sheet-unter">Hersteller</h4><ul class="belege">' + marken + '</ul>' : '') +
+      (p.raritaeten.length ? '<h4 class="sheet-unter">💎 Raritäten</h4><ul class="belege">' +
+        p.raritaeten.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>' : '') +
+      '<p class="leise klein">Gezählt werden die online gewerteten Funde. Wo und wann gesammelt wurde, ist nicht sichtbar. ' +
+      'Manche Abzeichen aus dem Sammelheft (z. B. Park komplett, Kuhkratzer) zählen hier nicht mit.</p>');
   }
 
   async function ladeBlockierte() {
@@ -625,6 +665,14 @@ const Online = (() => {
     $('#btn-periode-zurueck').addEventListener('click', () => { versatz++; ladeRangliste(); });
     $('#btn-periode-vor').addEventListener('click', () => { if (versatz > 0) { versatz--; ladeRangliste(); } });
     $('#chk-global').addEventListener('change', (e) => globalSetzen(e.target.checked));
+    $('#rang-liste').addEventListener('click', (e) => {
+      const li = e.target.closest('li[data-name]');
+      if (li) profilZeigen(li.dataset.name);
+    });
+    $('#rang-liste').addEventListener('keydown', (e) => {
+      const li = e.target.closest('li[data-name]');
+      if (li && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); profilZeigen(li.dataset.name); }
+    });
     $('#km-inhalt').addEventListener('click', kommentarKlick);
     $('#rang-blockiert').addEventListener('click', async (e) => {
       const b = e.target.closest('button[data-entblocken]');

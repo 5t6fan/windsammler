@@ -246,6 +246,9 @@ a.link-knopf { display: inline-block; }
 #rang-zeitraum { margin-bottom: 10px; }
 .rangliste .platz { width: 32px; text-align: center; font-size: 18px; font-weight: 700; color: var(--leise); flex: none; }
 .rangliste li { cursor: default; }
+.rangliste li[data-name] { cursor: pointer; }
+.rangliste li[data-name]:hover { background: color-mix(in srgb, var(--akzent) 8%, transparent); }
+.zahlen.drei { grid-template-columns: repeat(3, 1fr); margin-bottom: 4px; }
 .rangliste li.ich { background: var(--akzent-hell); }
 .link-knopf { border: 0; background: none; color: var(--leise); text-decoration: underline; font-size: 14px; padding: 12px 4px; cursor: pointer; }
 

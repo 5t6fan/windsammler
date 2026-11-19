@@ -5,9 +5,10 @@ import { WebView } from 'react-native-webview';
 import * as Online from '../../online';
 import { useWind } from '../../zustand';
 import { useFarben } from '../../farben';
-import { fmt0, datum } from '../../lib/format';
+import { fmt, fmt0, datum } from '../../lib/format';
+import { ABZEICHEN } from '../../lib/spiel';
 import { CAPTCHA_URL, DATENSCHUTZ_URL, BEDINGUNGEN_URL, WEB } from '../../config';
-import { Karte, Knopf, Chips, Abschnitt, Leise } from '../../ui';
+import { Karte, Knopf, Chips, Abschnitt, Leise, Blatt } from '../../ui';
 
 export default function Rang() {
   const o = Online.useOnline();
@@ -128,6 +129,7 @@ function Spiel() {
   const [zeilen, setZeilen] = useState(null);
   const [fehler, setFehler] = useState(null);
   const [blockiert, setBlockiert] = useState([]);
+  const [profil, setProfil] = useState(null);   // angetipptes Spielerprofil
   const [neuerName, setNeuerName] = useState(null);
   const [namensFehler, setNamensFehler] = useState(null);
   const [code, setCode] = useState('');
@@ -237,7 +239,8 @@ function Spiel() {
       <View style={[st.liste, { backgroundColor: c.flaeche, borderColor: c.linie, marginTop: 10 }]}>
         {fehler && <Leise style={st.leer}>Rangliste nicht ladbar ({fehler})</Leise>}
         {!zeilen && !fehler && <Leise style={st.leer}>Lade …</Leise>}
-        {zeilen && zeilen.map((z, n) => <Zeile key={n} z={z} erste={n === 0} />)}
+        {zeilen && zeilen.map((z, n) => <Zeile key={n} z={z} erste={n === 0}
+          onPress={() => Online.spielerProfil(z.name).then(setProfil).catch((e) => zeige('Profil nicht ladbar: ' + Online.fehlertext(e)))} />)}
         {zeilen && global && !zeilen.some((z) => !z.ich) && <Leise style={st.leer}>Noch niemand sonst ist in diesem Zeitraum global sichtbar.</Leise>}
       </View>
       {g && (
@@ -293,6 +296,7 @@ function Spiel() {
         <Text style={{ color: c.leise, textDecorationLine: 'underline' }}>Konto löschen</Text>
       </Pressable>
       <Links />
+      <Profil p={profil} onZu={() => setProfil(null)} />
     </View>
   );
 }
@@ -333,6 +337,54 @@ function KontoSichern() {
   );
 }
 
+/* ---------- Spielerprofil (aus der Rangliste angetippt) ---------- */
+
+function Profil({ p, onZu }) {
+  const c = useFarben();
+  const abz = p ? ABZEICHEN.filter((a) => p.abzeichen.includes(a.k)) : [];
+  const zahlen = p ? [
+    [fmt0.format(p.punkte), 'Punkte'], [fmt0.format(p.anlagen), 'Anlagen'], [fmt0.format(p.hersteller), 'Hersteller'],
+    [fmt0.format(p.modelle), 'Modelle'], [fmt.format(p.kw / 1000), 'MW'], [fmt0.format(p.beruehrt), '🤚 berührt'],
+  ] : [];
+  return (
+    <Blatt titel={p ? '👤 ' + p.name + (p.ich ? ' (du)' : '') : ''} sichtbar={!!p} onZu={onZu}>
+      {p && <View>
+        <Leise klein>Dabei seit {datum(Date.parse(p.seit))}</Leise>
+        <View style={[st.raster, { marginTop: 10 }]}>
+          {zahlen.map(([z, t]) => (
+            <View key={t} style={[st.zahl, { backgroundColor: c.bg, borderColor: c.linie }]}>
+              <Text style={{ fontSize: 22, fontWeight: '700', color: c.text, fontVariant: ['tabular-nums'] }}>{z}</Text>
+              <Leise klein>{t}</Leise>
+            </View>
+          ))}
+        </View>
+        <Abschnitt>Abzeichen · {abz.length}</Abschnitt>
+        {abz.length === 0 && <Leise>Noch keine Abzeichen.</Leise>}
+        <View style={st.raster}>
+          {abz.map((a) => (
+            <View key={a.k} style={[st.zahl, { backgroundColor: c.bg, borderColor: c.linie }]} accessible accessibilityLabel={a.name + ': ' + a.text}>
+              <Text style={{ fontSize: 26 }}>{a.ico}</Text>
+              <Text style={{ fontWeight: '600', fontSize: 13, color: c.text, textAlign: 'center' }}>{a.name}</Text>
+              <Leise klein style={{ textAlign: 'center' }}>{a.text}</Leise>
+            </View>
+          ))}
+        </View>
+        {p.marken.length > 0 && <Abschnitt>Hersteller</Abschnitt>}
+        {p.marken.map((m) => (
+          <Text key={m.marke} style={{ color: c.text, paddingVertical: 3 }}>
+            • <Text style={{ fontWeight: '600' }}>{m.marke}</Text> · {fmt0.format(m.anlagen)} Anlage{m.anlagen === 1 ? '' : 'n'} · {fmt0.format(m.modelle)} Modell{m.modelle === 1 ? '' : 'e'}
+          </Text>
+        ))}
+        {p.raritaeten.length > 0 && <Abschnitt>💎 Raritäten</Abschnitt>}
+        {p.raritaeten.map((r) => <Text key={r} style={{ color: c.text, paddingVertical: 3 }}>• {r}</Text>)}
+        <Leise klein style={{ marginTop: 16 }}>
+          Gezählt werden die online gewerteten Funde. Wo und wann gesammelt wurde, ist nicht sichtbar. Manche Abzeichen aus dem Sammelheft (z. B. Park komplett, Kuhkratzer) zählen hier nicht mit.
+        </Leise>
+      </View>}
+    </Blatt>
+  );
+}
+
 function PeriodeKnopf({ text, label, onPress, disabled }) {
   const c = useFarben();
   return (
@@ -343,13 +395,14 @@ function PeriodeKnopf({ text, label, onPress, disabled }) {
   );
 }
 
-function Zeile({ z, erste }) {
+function Zeile({ z, erste, onPress }) {
   const c = useFarben();
   const medaille = z.punkte > 0 ? ({ 1: '🥇', 2: '🥈', 3: '🥉' }[z.platz] || String(z.platz)) : String(z.platz);
   const unter = [fmt0.format(z.anlagen) + ' Anlagen', fmt0.format(z.modelle) + ' Modelle'];
   if (Number(z.beruehrt)) unter.push(fmt0.format(z.beruehrt) + ' 🤚');
   return (
-    <View style={[st.zeile, !erste && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.linie }, z.ich && { backgroundColor: c.akzentHell }]}>
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityHint="Profil anzeigen"
+      style={({ pressed }) => [st.zeile, !erste && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.linie }, z.ich && { backgroundColor: c.akzentHell }, pressed && { opacity: 0.6 }]}>
       <Text style={[st.platz, { color: c.leise }]}>{medaille}</Text>
       <View style={{ flex: 1 }}>
         <Text style={{ fontWeight: '600', color: c.text, fontSize: 16 }} numberOfLines={1}>{z.name}{z.ich ? ' (du)' : ''}</Text>
@@ -359,7 +412,7 @@ function Zeile({ z, erste }) {
         <Text style={{ fontWeight: '700', color: c.text, fontVariant: ['tabular-nums'] }}>{fmt0.format(z.punkte)}</Text>
         <Leise klein>Punkte</Leise>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -381,6 +434,8 @@ const st = StyleSheet.create({
   periodeKnopf: { width: 44, height: 38, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   liste: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   leer: { padding: 16, textAlign: 'center' },
+  raster: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  zahl: { width: '31.5%', borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 4, alignItems: 'center' },
   zeile: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
   platz: { width: 32, textAlign: 'center', fontSize: 18, fontWeight: '700' },
   zeileEingabe: { flexDirection: 'row', gap: 8, alignItems: 'center' },

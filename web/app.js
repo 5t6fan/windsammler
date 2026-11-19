@@ -93,6 +93,7 @@ function init(d) {
   const neu = pruefeAbzeichen();
   if (neu.length) { speichereHeft(); toast(neu.map((x) => x.ico + ' ' + x.name).join(' · ')); }
   renderHeft();
+  if (onlineFundeWartend) { const l = onlineFundeWartend; onlineFundeWartend = null; heftAbgleichen(l); }
   if (location.hash === '#heft' || location.hash === '#rang') zeigeView(location.hash.slice(1));
   if (PARAM.has('karte')) vollbild(true);
 
@@ -117,6 +118,35 @@ function aktualisiereHeft() {
     }
   }
   if (geaendert) speichereHeft();
+}
+
+// Online gewertete Funde ins lokale Sammelheft übernehmen (neues Gerät, gelöschter Speicher).
+// Wird von online.js nach der Anmeldung aufgerufen; vor dem Laden der Anlagendaten wird gewartet.
+let onlineFundeWartend = null;
+function heftAbgleichen(liste) {
+  if (!S.d) { onlineFundeWartend = liste; return; }
+  let neu = 0, geaendert = false;
+  for (const x of liste) {
+    let f = S.heft.funde[x.anlage];
+    if (!f) {
+      const i = S.idIndex.get(x.anlage);
+      const a = i != null ? anlage(i) : x;   // abgebaut: Angaben vom Server
+      f = S.heft.funde[x.anlage] = {
+        t: Date.parse(x.zeit), marke: a.marke, modell: a.modell, typ: a.typ, kw: a.kw, nabe: a.nabe, rotor: a.rotor,
+        ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon,
+      };
+      neu++;
+    }
+    if (x.beruehrt && !f.b) { f.b = Date.parse(x.beruehrt); geaendert = true; }
+    if (x.erst && !f.erst) { f.erst = true; geaendert = true; }
+    if (x.erst_b && !f.erstB) { f.erstB = true; geaendert = true; }
+  }
+  if (!neu && !geaendert) return;
+  pruefeAbzeichen();
+  speichereHeft();
+  if (S.pos) { berechneNah(); renderAlles(); }
+  renderHeft();
+  if (neu) toast(neu + (neu === 1 ? ' Fund' : ' Funde') + ' aus deinem Online-Konto ins Sammelheft übernommen');
 }
 
 function zaehle(map, key) { map.set(key, (map.get(key) || 0) + 1); }

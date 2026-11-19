@@ -35,6 +35,32 @@ export function aktualisiereHeft(D, heft, anlage) {
   return geaendert;
 }
 
+// Online gewertete Funde ins Sammelheft übernehmen (neues Gerät, Neuinstallation).
+// Gibt ein neues Heft und die Zahl neu übernommener Funde zurück (h = null: nichts geändert).
+export function heftAbgleichen(D, heft, liste, anlage) {
+  const h = { ...heft, funde: { ...heft.funde }, abzeichen: { ...heft.abzeichen } };
+  let neu = 0, geaendert = false;
+  for (const x of liste) {
+    let f = h.funde[x.anlage];
+    if (!f) {
+      const i = D.idIndex.get(x.anlage);
+      const a = i != null ? anlage(D, i) : x;   // abgebaut: Angaben vom Server
+      f = {
+        t: Date.parse(x.zeit), marke: a.marke, modell: a.modell, typ: a.typ, kw: a.kw, nabe: a.nabe, rotor: a.rotor,
+        ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon,
+      };
+      neu++;
+    } else f = { ...f };
+    if (x.beruehrt && !f.b) { f.b = Date.parse(x.beruehrt); geaendert = true; }
+    if (x.erst && !f.erst) { f.erst = true; geaendert = true; }
+    if (x.erst_b && !f.erstB) { f.erstB = true; geaendert = true; }
+    h.funde[x.anlage] = f;
+  }
+  if (!neu && !geaendert) return { h: null, neu: 0 };
+  pruefeAbzeichen(D, h);
+  return { h, neu };
+}
+
 /* ---------------- Beschreibung der Zielanlage ---------------- */
 
 // „Rotordurchmesser 90 m bis 120 m“ statt nur „90 m bis 120 m“; Plattformen behalten ihren Namen

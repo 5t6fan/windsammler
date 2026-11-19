@@ -5,7 +5,7 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { ladeDaten, anlage } from './lib/daten';
 import { berechneNah, distanz } from './lib/geo';
-import { aktualisiereHeft, pruefeAbzeichen, titel, SAMMEL_RADIUS, BERUEHR_RADIUS } from './lib/spiel';
+import { aktualisiereHeft, heftAbgleichen, pruefeAbzeichen, titel, SAMMEL_RADIUS, BERUEHR_RADIUS } from './lib/spiel';
 import * as Online from './online';
 
 const SPEICHER = 'windsammler.v1';
@@ -66,6 +66,25 @@ export function WindProvider({ children }) {
     if (neu.length) zeige(neu.map((x) => x.ico + ' ' + x.name).join(' · '));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [D, heft === null]);
+
+  // Nach der Anmeldung (auch auf einem neuen Gerät): online gewertete Funde ins Sammelheft übernehmen
+  const heftRef = useRef(heft);
+  heftRef.current = heft;
+  const profilId = Online.useOnline().profil?.id;
+  useEffect(() => {
+    if (!D || !heftRef.current || !profilId) return;
+    let abgebrochen = false;
+    Online.meineFunde().then((liste) => {
+      if (abgebrochen || !heftRef.current) return;
+      const { h, neu } = heftAbgleichen(D, heftRef.current, liste, anlage);
+      if (!h) return;
+      setHeft(h);
+      speichere(h);
+      if (neu) zeige(neu + (neu === 1 ? ' Fund' : ' Funde') + ' aus deinem Online-Konto ins Sammelheft übernommen');
+    }).catch(() => { /* offline – beim nächsten Start */ });
+    return () => { abgebrochen = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [D, heft === null, profilId]);
 
   /* ---------- Standort und Kompass ---------- */
 
