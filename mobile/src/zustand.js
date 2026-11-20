@@ -11,10 +11,12 @@ import { berechneNah, distanz } from './lib/geo';
 import { entfernung } from './lib/format';
 import { aktualisiereHeft, heftAbgleichen, pruefeAbzeichen, titel, SAMMEL_RADIUS, BERUEHR_RADIUS } from './lib/spiel';
 import * as Online from './online';
+import { starteHintergrund, stoppeHintergrund, laeuftHintergrund, schreibeListe } from './hintergrund';
 
 const SPEICHER = 'windsammler.v1';
 const HINWEIS = 'windsammler.hinweis';            // '1' = Hinweis, wenn eine neue Anlage sammelbar ist
 const SICHERHEIT = 'windsammler.sicherheit.v1';   // '1' = Sicherheitshinweis bestätigt
+const HINTERGRUND = 'windsammler.hintergrund';    // '1' = Hinweis auch im Hintergrund
 
 // Mitteilungen auch zeigen, während die App offen ist
 Notifications.setNotificationHandler({
@@ -39,6 +41,7 @@ export function WindProvider({ children }) {
   const [auswahl, setAuswahl] = useState(null);      // manuell gewählte Anlage (Index) oder null
   const [meldung, setMeldung] = useState(null);
   const [hinweis, setHinweisState] = useState(false);
+  const [hintergrund, setHintergrundState] = useState(false);
   const [sicherheit, setSicherheit] = useState(null);  // null = lädt, false = noch nicht bestätigt, true = bestätigt
   const [sicherheitOffen, setSicherheitOffen] = useState(false);
   const abos = useRef([]);
@@ -63,6 +66,8 @@ export function WindProvider({ children }) {
       setHinweisState(h === '1');
       setSicherheit(sh === '1');
     }).catch(() => setSicherheit(false));
+    // Läuft die Hintergrund-Ortung noch? (Erlaubnis kann in den Einstellungen entzogen worden sein)
+    laeuftHintergrund().then(setHintergrundState);
     Online.starte();
     ladeDaten((neu) => setD(neu))
       .then(setD)
@@ -117,7 +122,12 @@ export function WindProvider({ children }) {
   const setHinweis = useCallback(async (an) => {
     setHinweisState(an);
     AsyncStorage.setItem(HINWEIS, an ? '1' : '0').catch(() => {});
-    if (!an) return;
+    if (!an) {
+      stoppeHintergrund();
+      setHintergrundState(false);
+      AsyncStorage.setItem(HINTERGRUND, '0').catch(() => {});
+      return;
+    }
     try {
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('sammelbar', {
@@ -134,10 +144,39 @@ export function WindProvider({ children }) {
     }
   }, [zeige]);
 
+  // Auch im Hintergrund (Bildschirm gesperrt): eigene Ortungs-Aufgabe, siehe hintergrund.js
+  const setHintergrund = useCallback(async (an) => {
+    if (!an) {
+      await stoppeHintergrund();
+      setHintergrundState(false);
+      AsyncStorage.setItem(HINTERGRUND, '0').catch(() => {});
+      return;
+    }
+    try {
+      const fehler = await starteHintergrund(D);
+      if (fehler) { zeige(fehler); setHintergrundState(false); return; }
+      setHintergrundState(true);
+      AsyncStorage.setItem(HINTERGRUND, '1').catch(() => {});
+      zeige('🔔 Auch bei gesperrtem Bildschirm aktiv – ausschalten, wenn du nicht unterwegs bist');
+    } catch (_) {
+      zeige('Hintergrund-Ortung konnte nicht gestartet werden');
+      setHintergrundState(false);
+    }
+  }, [D, zeige]);
+
+  // Neuer Datenstand: Liste der sammelbaren Anlagen für die Hintergrund-Aufgabe erneuern
+  useEffect(() => {
+    if (D && hintergrund) schreibeListe(D);
+  }, [D, hintergrund]);
+
   // Tipp auf die Mitteilung: Anlage auswählen und „In der Nähe“ zeigen
+  const DRef = useRef(D);
+  useEffect(() => { DRef.current = D; }, [D]);
   useEffect(() => {
     const abo = Notifications.addNotificationResponseReceivedListener((r) => {
-      const i = r.notification.request.content.data && r.notification.request.content.data.i;
+      const data = r.notification.request.content.data || {};
+      // Vordergrund: Index; Hintergrund-Aufgabe: MaStR-Nummer
+      const i = typeof data.i === 'number' ? data.i : DRef.current && data.id ? DRef.current.idIndex.get(data.id) : null;
       if (typeof i !== 'number') return;
       setAuswahl(i);
       try { router.navigate('/'); } catch (_) { /* Navigation noch nicht bereit */ }
@@ -278,7 +317,7 @@ export function WindProvider({ children }) {
     waehle: setAuswahl, zurNaechsten: () => setAuswahl(null),
     sammelRadius, beruehrRadius, sammle, importiere,
     meldung, zeige,
-    hinweis, setHinweis,
+    hinweis, setHinweis, hintergrund, setHintergrund,
     sicherheit, sicherheitOffen, setSicherheitOffen, bestaetigeSicherheit,
   };
   return <Kontext.Provider value={wert}>{children}</Kontext.Provider>;

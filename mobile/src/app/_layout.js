@@ -5,6 +5,8 @@ import { Keyboard, Linking, Platform, Pressable, StyleSheet, Text, View } from '
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WindProvider, useWind } from '../zustand';
 import { useFarben } from '../farben';
+// Registriert die Hintergrund-Aufgabe – muss beim Start geladen werden, auch wenn das System die App nur im Hintergrund weckt
+import '../hintergrund';
 import { Blatt, Knopf, Leise } from '../ui';
 import { BEDINGUNGEN_URL } from '../config';
 

@@ -23,7 +23,11 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Der Windsammler zeigt dir Entfernung und Richtung zu Windenergieanlagen in deiner Nähe und prüft beim Sammeln, ob du wirklich dort bist."
+          "locationWhenInUsePermission": "Der Windsammler zeigt dir Entfernung und Richtung zu Windenergieanlagen in deiner Nähe und prüft beim Sammeln, ob du wirklich dort bist.",
+          "locationAlwaysAndWhenInUsePermission": "Wenn du „Hinweis auch bei gesperrtem Bildschirm“ einschaltest, prüft der Windsammler unterwegs im Hintergrund, ob du an einer noch nicht gesammelten Windenergieanlage vorbeikommst, und gibt dir Bescheid. Dein Standort bleibt auf dem Gerät.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-sqlite",

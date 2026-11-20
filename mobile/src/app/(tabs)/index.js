@@ -37,8 +37,14 @@ export default function Naehe() {
       </View>
       <View style={[st.schalter, { marginTop: 10 }]}>
         <Switch value={w.hinweis} onValueChange={w.setHinweis} trackColor={{ true: c.akzent }} />
-        <Leise klein style={{ flex: 1 }}>🔔 Hinweis, wenn eine neue Anlage sammelbar ist (während die App läuft)</Leise>
+        <Leise klein style={{ flex: 1 }}>🔔 Hinweis, wenn eine neue Anlage sammelbar ist</Leise>
       </View>
+      {w.hinweis && (
+        <View style={[st.schalter, { marginTop: 8 }]}>
+          <Switch value={w.hintergrund} onValueChange={w.setHintergrund} trackColor={{ true: c.akzent }} />
+          <Leise klein style={{ flex: 1 }}>Auch bei gesperrtem Bildschirm – braucht Standort „Immer“ und etwas mehr Akku</Leise>
+        </View>
+      )}
       {pos && <Liste onWahl={() => scroll.current && scroll.current.scrollTo({ y: 0, animated: true })} />}
     </ScrollView>
   );
