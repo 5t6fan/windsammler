@@ -140,6 +140,11 @@ create table if not exists public.geraete (
 );
 create index if not exists geraete_profil on public.geraete (profil);
 
+-- Versandte Admin-Mails (für die Obergrenze pro Tag)
+create table if not exists public.mail_versand (
+  zeit timestamptz not null default now()
+);
+
 create index if not exists funde_anlage_zeit on public.funde (anlage, zeit);
 create index if not exists funde_nutzer_zeit on public.funde (nutzer, zeit desc);
 create index if not exists mitglieder_nutzer on public.mitglieder (nutzer);
@@ -161,6 +166,7 @@ alter table public.admins     enable row level security;
 alter table public.passwoerter enable row level security;
 alter table public.login_fehler enable row level security;
 alter table public.geraete    enable row level security;
+alter table public.mail_versand enable row level security;
 
 -- Spielerprofil der aktuellen Sitzung: verknüpftes Profil (geraete) oder das eigene
 create or replace function public.ich()
@@ -825,6 +831,7 @@ returns void language sql security definer set search_path = '' as $$
      and not exists (select 1 from public.geraete g where g.sitzung = u.id);
   delete from public.beitritt_fehler where zeit < now() - interval '1 day';
   delete from public.login_fehler where zeit < now() - interval '1 day';
+  delete from public.mail_versand where zeit < now() - interval '2 days';
   delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
 $$;
 
@@ -836,10 +843,77 @@ exception when others then
   raise notice 'pg_cron nicht verfügbar – Aufräumen bitte manuell planen: %', sqlerrm;
 end $$;
 
+-- ---------------------------------------------------------------- Mail an den Admin bei Meldungen
+-- Versand über Resend (resend.com) per pg_net. Eingerichtet wird das einmalig im SQL Editor:
+--   select vault.create_secret('re_…', 'resend_api_key');       -- API-Key von resend.com
+--   select vault.create_secret('du@beispiel.de', 'admin_mail');  -- Adresse deines Resend-Kontos
+-- Ohne diese beiden Einträge (oder ohne pg_net) wird keine Mail verschickt; Melden funktioniert trotzdem.
+-- Die Mail enthält bewusst weder Kommentartext noch Spielernamen – die stehen auf der Admin-Seite.
+-- Test:  select public._admin_mail('Test', 'Hallo vom Windsammler');
+--        select status_code, content from net._http_response order by created desc limit 1;
+
+do $$
+begin
+  create extension if not exists pg_net;
+exception when others then
+  raise notice 'pg_net nicht verfügbar – keine Mail-Benachrichtigung: %', sqlerrm;
+end $$;
+
+create or replace function public._admin_mail(p_betreff text, p_text text)
+returns boolean language plpgsql security definer set search_path = '' as $$
+declare
+  v_key  text;
+  v_mail text;
+begin
+  select decrypted_secret into v_key  from vault.decrypted_secrets where name = 'resend_api_key';
+  select decrypted_secret into v_mail from vault.decrypted_secrets where name = 'admin_mail';
+  if v_key is null or v_mail is null then return false; end if;
+  -- Höchstens 20 Mails pro Tag, falls jemand massenhaft meldet
+  if (select count(*) from public.mail_versand where zeit > now() - interval '1 day') >= 20 then return false; end if;
+  insert into public.mail_versand default values;
+  -- pg_net verschickt nach dem Commit im Hintergrund, das Melden wartet nicht darauf
+  perform net.http_post(
+    url     := 'https://api.resend.com/emails',
+    headers := jsonb_build_object('Authorization', 'Bearer ' || v_key, 'Content-Type', 'application/json'),
+    body    := jsonb_build_object('from', 'Windsammler <onboarding@resend.dev>', 'to', jsonb_build_array(v_mail),
+                                  'subject', p_betreff, 'text', p_text)
+  );
+  return true;
+exception when others then
+  raise warning 'Admin-Mail nicht verschickt: %', sqlerrm;
+  return false;
+end $$;
+
+-- Mail bei der ersten Meldung eines Kommentars und wenn er mit der dritten ausgeblendet wird
+create or replace function public._meldung_mail()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_n      int;
+  v_anlage text;
+begin
+  select count(*) into v_n from public.meldungen where kommentar = new.kommentar;
+  if v_n not in (1, 3) then return null; end if;
+  select anlage into v_anlage from public.kommentare where id = new.kommentar;
+  perform public._admin_mail(
+    case when v_n = 1 then 'Windsammler: neue Meldung' else 'Windsammler: Kommentar ausgeblendet (3 Meldungen)' end,
+    'Ein Kommentar zu Anlage ' || coalesce(v_anlage, '?') || ' wurde gemeldet (' || v_n || '× bisher).' ||
+      case when v_n >= 3 then E'\nEr ist jetzt für alle außer dem Verfasser ausgeblendet.' else '' end ||
+      E'\n\nBitte prüfen: https://5t6fan.github.io/windsammler/admin.html');
+  return null;
+exception when others then
+  raise warning 'Meldungs-Mail fehlgeschlagen: %', sqlerrm;
+  return null;
+end $$;
+
+drop trigger if exists meldung_mail on public.meldungen;
+create trigger meldung_mail after insert on public.meldungen
+  for each row execute function public._meldung_mail();
+
 -- ---------------------------------------------------------------- Rechte
 
 revoke all on all functions in schema public from public, anon;
-revoke all on function public.distanz_m(float8, float8, float8, float8), public._nutzer(), public._admin(), public.aufraeumen() from authenticated;
+revoke all on function public.distanz_m(float8, float8, float8, float8), public._nutzer(), public._admin(), public.aufraeumen(),
+  public._admin_mail(text, text), public._meldung_mail() from authenticated;
 grant execute on function
   public.sammeln(text, float8, float8, timestamptz),
   public.mein_stand(),
