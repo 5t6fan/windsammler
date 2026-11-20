@@ -32,12 +32,16 @@
       return status('Du bist in diesem Browser nicht angemeldet. Öffne zuerst die <a href="./#rang">Web-App</a>, melde dich im Tab ' +
         'Rangliste mit einem Spielernamen an und komm dann hierher zurück.');
     }
-    $('#meine-id').textContent = s.user.id;
+    // Der Server prüft das Spielerprofil (public.ich()), nicht die Browser-Sitzung –
+    // bei per Passwort verknüpften Geräten sind das verschiedene IDs.
+    let profilId = s.user.id;
+    try { profilId = (await rpc('ich')) || s.user.id; } catch (_) { /* Funktion fehlt oder offline */ }
+    $('#meine-id').textContent = profilId;
     let admin = false;
     try { admin = await rpc('admin_ist'); } catch (_) { /* Funktion fehlt oder offline */ }
     if (!admin) {
       return status('<b>Dieses Konto ist nicht als Admin freigeschaltet.</b><br>Im Supabase-Dashboard unter <i>SQL Editor</i> ausführen:' +
-        '<pre class="meldung-text">insert into public.admins (nutzer) values (\'' + esc(s.user.id) + '\');</pre>Danach diese Seite neu laden.');
+        '<pre class="meldung-text">insert into public.admins (nutzer) values (\'' + esc(profilId) + '\');</pre>Danach diese Seite neu laden.');
     }
     $('#status').hidden = true;
     $('#inhalt').hidden = false;
