@@ -3,12 +3,23 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+import { router } from 'expo-router';
 import { ladeDaten, anlage } from './lib/daten';
 import { berechneNah, distanz } from './lib/geo';
+import { entfernung } from './lib/format';
 import { aktualisiereHeft, heftAbgleichen, pruefeAbzeichen, titel, SAMMEL_RADIUS, BERUEHR_RADIUS } from './lib/spiel';
 import * as Online from './online';
 
 const SPEICHER = 'windsammler.v1';
+const HINWEIS = 'windsammler.hinweis';            // '1' = Hinweis, wenn eine neue Anlage sammelbar ist
+const SICHERHEIT = 'windsammler.sicherheit.v1';   // '1' = Sicherheitshinweis bestätigt
+
+// Mitteilungen auch zeigen, während die App offen ist
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
+});
 // Testmodus nur in der Entwicklung: feste Position bei Kassel, Sammeln ohne Entfernungsgrenze
 export const TEST_POS = { lat: 51.265, lon: 9.73, acc: 5 };
 
@@ -27,6 +38,9 @@ export function WindProvider({ children }) {
   const [planung, setPlanung] = useState(false);
   const [auswahl, setAuswahl] = useState(null);      // manuell gewählte Anlage (Index) oder null
   const [meldung, setMeldung] = useState(null);
+  const [hinweis, setHinweisState] = useState(false);
+  const [sicherheit, setSicherheit] = useState(null);  // null = lädt, false = noch nicht bestätigt, true = bestätigt
+  const [sicherheitOffen, setSicherheitOffen] = useState(false);
   const abos = useRef([]);
   const meldungTimer = useRef(null);
 
@@ -45,6 +59,10 @@ export function WindProvider({ children }) {
       if (!h || !h.funde) h = { v: 1, funde: {}, abzeichen: {} };
       setHeft(h);
     })();
+    AsyncStorage.multiGet([HINWEIS, SICHERHEIT]).then(([[, h], [, sh]]) => {
+      setHinweisState(h === '1');
+      setSicherheit(sh === '1');
+    }).catch(() => setSicherheit(false));
     Online.starte();
     ladeDaten((neu) => setD(neu))
       .then(setD)
@@ -85,6 +103,47 @@ export function WindProvider({ children }) {
     return () => { abgebrochen = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [D, heft === null, profilId]);
+
+  /* ---------- Sicherheitshinweis ---------- */
+
+  const bestaetigeSicherheit = useCallback(() => {
+    setSicherheit(true);
+    setSicherheitOffen(false);
+    AsyncStorage.setItem(SICHERHEIT, '1').catch(() => {});
+  }, []);
+
+  /* ---------- Hinweis: neue Anlage sammelbar ---------- */
+
+  const setHinweis = useCallback(async (an) => {
+    setHinweisState(an);
+    AsyncStorage.setItem(HINWEIS, an ? '1' : '0').catch(() => {});
+    if (!an) return;
+    try {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('sammelbar', {
+          // eslint-disable-next-line import/namespace -- per export * aus NotificationChannelManager.types
+          name: 'Neue Anlage sammelbar', importance: Notifications.AndroidImportance.HIGH, vibrationPattern: [0, 60, 80, 60],
+        });
+      }
+      let { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') ({ status } = await Notifications.requestPermissionsAsync());
+      zeige(status === 'granted' ? '🔔 Du bekommst einen Hinweis, sobald eine neue Anlage sammelbar ist'
+        : 'Mitteilungen nicht erlaubt – du bekommst den Hinweis nur in der App');
+    } catch (_) {
+      zeige('Mitteilungen gehen hier nicht – du bekommst den Hinweis nur in der App');
+    }
+  }, [zeige]);
+
+  // Tipp auf die Mitteilung: Anlage auswählen und „In der Nähe“ zeigen
+  useEffect(() => {
+    const abo = Notifications.addNotificationResponseReceivedListener((r) => {
+      const i = r.notification.request.content.data && r.notification.request.content.data.i;
+      if (typeof i !== 'number') return;
+      setAuswahl(i);
+      try { router.navigate('/'); } catch (_) { /* Navigation noch nicht bereit */ }
+    });
+    return () => abo.remove();
+  }, []);
 
   /* ---------- Standort und Kompass ---------- */
 
@@ -133,6 +192,24 @@ export function WindProvider({ children }) {
   }, [D, rechenPos, radius, planung, heft]);
 
   const sel = auswahl ?? umgebung.naechste;
+
+  // Nächste noch nicht gesammelte Anlage (ohne geplante und Offshore) in Sammelreichweite? Einmal je Anlage melden.
+  const gemeldet = useRef(new Set());
+  useEffect(() => {
+    if (!hinweis || !D || !rechenPos || !heft || umgebung.neu == null) return;
+    const a = anlage(D, umgebung.neu);
+    const d = distanz(rechenPos.lat, rechenPos.lon, a.lat, a.lon);
+    if (d > sammelRadius || heft.funde[a.id] || gemeldet.current.has(a.id)) return;
+    gemeldet.current.add(a.id);
+    const text = titel(a) + ' · ' + entfernung(d) + ' entfernt' + (a.ort ? ' · ' + a.ort : '');
+    zeige('★ Neue Anlage sammelbar: ' + text);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    Notifications.scheduleNotificationAsync({
+      content: { title: '★ Neue Anlage sammelbar', body: text, data: { i: umgebung.neu } },
+      trigger: Platform.OS === 'android' ? { channelId: 'sammelbar' } : null,
+    }).catch(() => { /* ohne Erlaubnis: nur die Meldung in der App */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hinweis, D, rechenPos, umgebung.neu]);
 
   /* ---------- Sammeln und Berühren ---------- */
 
@@ -201,6 +278,8 @@ export function WindProvider({ children }) {
     waehle: setAuswahl, zurNaechsten: () => setAuswahl(null),
     sammelRadius, beruehrRadius, sammle, importiere,
     meldung, zeige,
+    hinweis, setHinweis,
+    sicherheit, sicherheitOffen, setSicherheitOffen, bestaetigeSicherheit,
   };
   return <Kontext.Provider value={wert}>{children}</Kontext.Provider>;
 }

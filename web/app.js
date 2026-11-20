@@ -197,7 +197,12 @@ function entfernung(m) {
 
 /* ---------------- Standort & Kompass ---------------- */
 
-$('#btn-start').addEventListener('click', async () => {
+$('#btn-start').addEventListener('click', () => {
+  if (sicherheitBestaetigt()) starteStandort();
+  else zeigeSicherheit(starteStandort);   // „Verstanden“ ist wieder ein Tipp – Kompass-Freigabe klappt
+});
+
+async function starteStandort() {
   // iOS verlangt die Kompass-Freigabe direkt aus einem Tipp heraus
   if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
     try { await DeviceOrientationEvent.requestPermission(); } catch (_) { /* ohne Kompass weiter */ }
@@ -210,7 +215,7 @@ $('#btn-start').addEventListener('click', async () => {
     (e) => status(e.code === 1 ? 'Standort nicht freigegeben – bitte in den Einstellungen erlauben.' : 'Standort nicht verfügbar.'),
     { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
   );
-});
+}
 
 function starteKompass() {
   const winkel = () => (screen.orientation && screen.orientation.angle) || window.orientation || 0;
@@ -238,6 +243,7 @@ function neuePosition(p) {
   if (!letzteBerechnung || distanz(p.lat, p.lon, letzteBerechnung.lat, letzteBerechnung.lon) > 15) {
     letzteBerechnung = p;
     berechneNah();
+    meldeSammelbar();
   }
   renderAlles();
 }
@@ -267,6 +273,7 @@ function berechneNah() {
   S.nah = nah;
   S.naechste = best;
   S.neu = neu;
+  S.neuD = neuD;
   S.unberuehrt = unb;
   if (!S.manuell || S.sel == null) S.sel = best;
 }
@@ -324,6 +331,7 @@ function renderZiel() {
   }
 
   $('#btn-naechste').hidden = !(S.manuell && S.sel !== S.naechste);
+  $('#btn-fund-teilen').hidden = !fund;
   $('#map-info-dist').textContent = entfernung(d) + ' ' + KURZ[sektor(b)] + (fund ? ' ✓' : '');
   $('#map-info-titel').textContent = titel(a) + (a.park ? ' · ' + a.park : '');
   S.zielPeilung = b;
@@ -1080,7 +1088,8 @@ function renderFunde(s) {
         '<span class="li-text"><div class="li-titel">' + esc(fundTitel(f)) + '</div><div class="li-unter">' +
         esc([weg ? 'abgebaut' + (S.abgebaut[f.id] ? ' ' + datum(S.abgebaut[f.id]) : '') : null, f.erst ? '🚩 Erstentdeckung' : null,
           f.erstB ? '🖐️ zuerst berührt' : null, f.ort, f.kreis].filter(Boolean).join(' · ')) +
-        '</div></span><span class="li-dist">' + datum(f.t) + '</span></li>';
+        '</div></span><span class="li-dist">' + datum(f.t) + '</span>' +
+        '<button class="li-teilen" data-teilen="' + esc(f.id) + '" aria-label="' + esc(fundTitel(f) + ' teilen') + '">📤</button></li>';
     }).join('')
     : S.fundFilter === 'alle'
       ? '<li class="leer">Geh in die Nähe einer Anlage (unter ' + SAMMEL_RADIUS + ' m) und tippe auf „Sammeln“.</li>'
@@ -1103,6 +1112,8 @@ $('#btn-funde-karte').addEventListener('click', () => {
 });
 
 $('#heft-funde').addEventListener('click', (e) => {
+  const t = e.target.closest('button[data-teilen]');
+  if (t) return teileFund(t.dataset.teilen);
   const li = e.target.closest('li[data-id]');
   if (!li) return;
   const id = li.dataset.id;
@@ -1118,6 +1129,121 @@ $('#heft-funde').addEventListener('click', (e) => {
     L.popup().setLatLng([f.lat, f.lon]).setContent(fundPopup(id, f)).openOn(S.map);
   }, 60);
 });
+
+/* ---------------- Fund teilen ---------------- */
+
+const APP_URL = location.origin + location.pathname;
+
+function teilText(f) {
+  const zeilen = ['🌬️ Gesammelt im Windsammler: ' + fundTitel(f) + (f.ort ? ' in ' + f.ort : '') + ' (' + datum(f.t) + ')'];
+  const werte = [];
+  if (f.kw) werte.push(fmt.format(f.kw / 1000) + ' MW');
+  if (f.nabe) werte.push('Nabe ' + fmt0.format(f.nabe) + ' m');
+  if (f.rotor) werte.push('Rotor ' + fmt0.format(f.rotor) + ' m');
+  if (f.ibn) werte.push('seit ' + f.ibn.slice(0, 4));
+  if (werte.length) zeilen.push(werte.join(' · '));
+  if (f.erst) zeilen.push('🚩 Als Erste/r überhaupt entdeckt!');
+  if (f.erstB) zeilen.push('🖐️ Als Erste/r den Turm berührt!');
+  else if (f.b) zeilen.push('🤚 Turm berührt');
+  const n = Object.keys(S.heft.funde).length;
+  zeilen.push('Mein Sammelheft: ' + n + (n === 1 ? ' Anlage' : ' Anlagen') + '. Sammel mit: ' + APP_URL);
+  return zeilen.join('\n');
+}
+
+function teileFund(id) {
+  const f = S.heft.funde[id];
+  if (!f) return;
+  const text = teilText(f);
+  if (navigator.share) navigator.share({ text }).catch(() => {});
+  else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('Text zum Teilen kopiert'), () => toast('Teilen nicht möglich'));
+  else toast('Teilen wird von diesem Browser nicht unterstützt');
+}
+
+$('#btn-fund-teilen').addEventListener('click', () => { if (S.sel != null) teileFund(anlage(S.sel).id); });
+
+/* ---------------- Hinweis: neue Anlage in Sammelreichweite ---------------- */
+
+const HINWEIS = 'windsammler.hinweis';
+const gemeldet = new Set();   // je Sitzung nur einmal pro Anlage
+let hinweisAn = false;
+try { hinweisAn = localStorage.getItem(HINWEIS) === '1'; } catch (_) { /* aus */ }
+$('#chk-hinweis').checked = hinweisAn;
+
+$('#chk-hinweis').addEventListener('change', async (e) => {
+  hinweisAn = e.target.checked;
+  try { localStorage.setItem(HINWEIS, hinweisAn ? '1' : '0'); } catch (_) { /* nur für diese Sitzung */ }
+  if (!hinweisAn) return;
+  // Die Frage nach Mitteilungen muss direkt aus dem Tipp kommen (iOS: nur als App auf dem Home-Bildschirm)
+  if (!('Notification' in window)) return toast('Mitteilungen gehen hier nicht – du bekommst den Hinweis in der App');
+  if (Notification.permission === 'default') {
+    try { await Notification.requestPermission(); } catch (_) { /* alte Browser */ }
+  }
+  toast(Notification.permission === 'granted'
+    ? '🔔 Du bekommst einen Hinweis, sobald eine neue Anlage sammelbar ist'
+    : 'Mitteilungen nicht erlaubt – du bekommst den Hinweis nur in der App');
+  if (S.pos) meldeSammelbar();
+});
+
+// Nächste noch nicht gesammelte Anlage in Reichweite? (S.neu: ohne geplante und Offshore-Anlagen)
+function meldeSammelbar() {
+  if (!hinweisAn || S.neu == null || S.neuD > SAMMEL_RADIUS) return;
+  const a = anlage(S.neu);
+  if (gemeldet.has(a.id) || S.heft.funde[a.id]) return;
+  gemeldet.add(a.id);
+  const titelText = '★ Neue Anlage sammelbar';
+  const text = titel(a) + ' · ' + entfernung(S.neuD) + ' entfernt' + (a.ort ? ' · ' + a.ort : '');
+  toast(titelText + ': ' + text);
+  if (navigator.vibrate) navigator.vibrate([60, 80, 60]);
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const opt = { body: text, tag: 'sammelbar', renotify: true, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { id: a.id } };
+  // Über den Service Worker – direktes new Notification() ist auf Android nicht erlaubt
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready.then((r) => r.showNotification(titelText, opt)).catch(() => {});
+  } else {
+    try { new Notification(titelText, opt); } catch (_) { /* nur Toast */ }
+  }
+}
+
+// Tipp auf die Mitteilung: Der Service Worker schickt die Anlage, sie wird ausgewählt
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (!e.data || e.data.typ !== 'anlage' || !S.d) return;
+    const i = S.idIndex.get(e.data.id);
+    if (i == null) return;
+    zeigeView('naehe');
+    if (S.pos) waehle(i, true);
+  });
+}
+
+/* ---------------- Sicherheitshinweis ---------------- */
+
+const SICHERHEIT = 'windsammler.sicherheit.v1';
+function sicherheitBestaetigt() {
+  try { return localStorage.getItem(SICHERHEIT) === '1'; } catch (_) { return false; }
+}
+
+function zeigeSicherheit(weiter) {
+  zeigeSheet('⚠️ Sicherheit geht vor',
+    '<p>Windparks sind Betriebsgelände und liegen meist auf Privatgrund.</p>' +
+    '<ul class="sicherheit-liste">' +
+    '<li>Betritt nur frei zugängliche Wege und Flächen. Beachte Absperrungen, Schilder und Anweisungen von Betreibern, Landwirten und Jägern.</li>' +
+    '<li>Halte großen Abstand bei Frost (Eiswurf von den Rotorblättern), Gewitter, Sturm sowie bei Bau- und Wartungsarbeiten.</li>' +
+    '<li>Klettere nicht auf Anlagen, Zäune oder Bauteile. „Turm berühren“ nur, wo der Turm frei und gefahrlos erreichbar ist.</li>' +
+    '<li>Bediene die App nicht beim Fahren und achte auf den Verkehr.</li>' +
+    '<li>Standorte aus dem Marktstammdatenregister können ungenau sein.</li>' +
+    '</ul>' +
+    '<p><b>Die Suche nach Windenergieanlagen und das Betreten von Windparkflächen erfolgen auf eigene Gefahr.</b> ' +
+    'Für Unfälle, Schäden oder Verstöße, die bei der Suche oder vor Ort entstehen, übernehmen wir im gesetzlich zulässigen Rahmen keine Verantwortung. ' +
+    'Punkte und Abzeichen sind kein Grund, Risiken einzugehen.</p>' +
+    '<p class="leise klein">Mehr in den <a href="nutzungsbedingungen.html">Nutzungsbedingungen</a>.</p>' +
+    '<button id="btn-sicherheit-ok" class="knopf haupt breit">Verstanden</button>');
+  $('#btn-sicherheit-ok').addEventListener('click', () => {
+    try { localStorage.setItem(SICHERHEIT, '1'); } catch (_) { /* nächstes Mal wieder */ }
+    $('#sheet').close();
+    if (weiter) weiter();
+  });
+}
+$('#btn-sicherheit').addEventListener('click', () => zeigeSicherheit(null));
 
 /* ---------------- Detailansicht (Sheet) ---------------- */
 

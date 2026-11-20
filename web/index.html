@@ -29,6 +29,7 @@
       <p class="start-titel">Welche Windräder sind in deiner Nähe?</p>
       <p class="leise">Für Entfernung und Richtung braucht die App deinen Standort, für den Richtungspfeil den Kompass.</p>
       <button id="btn-start" class="knopf haupt" disabled>Standort &amp; Kompass aktivieren</button>
+      <p class="leise klein sicherheit-zeile">⚠️ Suche und Betreten von Windparkflächen auf eigene Gefahr. <button id="btn-sicherheit" class="link-knopf inline">Sicherheitshinweise</button></p>
     </div>
 
     <div id="ziel" class="karte ziel" hidden>
@@ -57,6 +58,7 @@
         <button id="btn-sammeln" class="knopf haupt">Sammeln</button>
         <button id="btn-beruehren" class="knopf" hidden>🤚 Turm berührt</button>
         <button id="btn-naechste" class="knopf" hidden>Zur nächsten</button>
+        <button id="btn-fund-teilen" class="knopf" hidden>📤 Teilen</button>
       </div>
       <div id="kompass-hinweis" class="leise klein" hidden>Kein Kompass: Der Pfeil zeigt relativ zu Norden (oben).</div>
       <details id="ziel-kommentare" class="kommentare" hidden>
@@ -95,6 +97,7 @@
         <button data-r="25000">25 km</button>
       </div>
       <label class="schalter"><input type="checkbox" id="chk-planung"> geplante zeigen</label>
+      <label class="schalter"><input type="checkbox" id="chk-hinweis"> 🔔 Hinweis, wenn eine neue Anlage sammelbar ist</label>
     </div>
 
     <h3 id="liste-titel" class="abschnitt">In der Nähe</h3>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
@@ -9,8 +9,9 @@ import { useFarben } from '../../farben';
 import { fmt, fmt0, datum } from '../../lib/format';
 import {
   statistik, herstellerFortschritt, QUARTETTE, quartettStand, ABZEICHEN, dynamischeAbzeichen,
-  perioden, fundTitel, istAbgebaut, SAMMEL_RADIUS,
+  perioden, fundTitel, istAbgebaut, teilText, SAMMEL_RADIUS,
 } from '../../lib/spiel';
+import { WEB } from '../../config';
 import { Karte, Knopf, Chips, Abschnitt, Leise, Etikett, Fortschritt, Blatt } from '../../ui';
 
 export default function Heft() {
@@ -329,6 +330,11 @@ function Funde({ s }) {
                   f.erst ? '🚩 Erstentdeckung' : null, f.erstB ? '🖐️ zuerst berührt' : null, f.ort, f.kreis].filter(Boolean).join(' · ')}</Leise>
               </View>
               <Text style={{ fontWeight: '700', color: c.text, fontVariant: ['tabular-nums'] }}>{datum(f.t)}</Text>
+              <Pressable onPress={() => Share.share({ message: teilText(f, s.funde.length, WEB) }).catch(() => {})} hitSlop={6}
+                accessibilityRole="button" accessibilityLabel={fundTitel(f) + ' teilen'}
+                style={[st.teilen, { borderColor: c.linie, backgroundColor: c.flaeche }]}>
+                <Text style={{ fontSize: 16 }}>📤</Text>
+              </Pressable>
             </Pressable>
           );
         })}
@@ -393,5 +399,6 @@ const st = StyleSheet.create({
   qZeile: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderTopWidth: StyleSheet.hairlineWidth },
   liste: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   zeile: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14 },
+  teilen: { width: 38, height: 38, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   testZeile: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16 },
 });

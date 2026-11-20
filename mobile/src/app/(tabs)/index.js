@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useWind } from '../../zustand';
 import { useFarben, PUNKT } from '../../farben';
 import { anlage } from '../../lib/daten';
 import { peilung, distanz, sektor, RICHTUNGEN, KURZ, PFEILE } from '../../lib/geo';
 import { entfernung, fmt0, datum } from '../../lib/format';
-import { beschreibung, etiketten, titel, istAbgebaut, fundTitel } from '../../lib/spiel';
+import { beschreibung, etiketten, titel, istAbgebaut, fundTitel, teilText } from '../../lib/spiel';
+import { WEB } from '../../config';
 import { Karte, Knopf, Chips, Leise, Etikett, Abschnitt } from '../../ui';
 import { Bewertungen, Entdecker } from '../../bewertungen';
 
@@ -34,6 +35,10 @@ export default function Naehe() {
           <Leise klein>geplante</Leise>
         </View>
       </View>
+      <View style={[st.schalter, { marginTop: 10 }]}>
+        <Switch value={w.hinweis} onValueChange={w.setHinweis} trackColor={{ true: c.akzent }} />
+        <Leise klein style={{ flex: 1 }}>🔔 Hinweis, wenn eine neue Anlage sammelbar ist (während die App läuft)</Leise>
+      </View>
       {pos && <Liste onWahl={() => scroll.current && scroll.current.scrollTo({ y: 0, animated: true })} />}
     </ScrollView>
   );
@@ -51,8 +56,12 @@ function Start() {
     <Karte style={{ alignItems: 'center', paddingVertical: 24 }}>
       <Text style={[st.startTitel, { color: c.text }]}>Welche Windräder sind in deiner Nähe?</Text>
       <Leise style={{ textAlign: 'center', marginBottom: 14 }}>Für Entfernung und Richtung braucht die App deinen Standort, für den Pfeil den Kompass.</Leise>
-      <Knopf haupt titel="Standort & Kompass aktivieren" onPress={w.starteStandort} style={{ alignSelf: 'stretch' }} />
+      <Knopf haupt titel="Standort & Kompass aktivieren" style={{ alignSelf: 'stretch' }}
+        onPress={() => (w.sicherheit ? w.starteStandort() : w.setSicherheitOffen('start'))} />
       {text && <Leise klein style={{ marginTop: 10 }}>{text}</Leise>}
+      <Pressable onPress={() => w.setSicherheitOffen(true)} style={{ marginTop: 14 }} accessibilityRole="button">
+        <Leise klein style={{ textAlign: 'center' }}>⚠️ Suche und Betreten von Windparkflächen auf eigene Gefahr. <Text style={{ textDecorationLine: 'underline' }}>Sicherheitshinweise</Text></Leise>
+      </Pressable>
       {__DEV__ && (
         <Pressable onPress={() => w.setTest(true)} style={{ marginTop: 14 }}>
           <Text style={{ color: c.leise, textDecorationLine: 'underline' }}>Testmodus: feste Position bei Kassel</Text>
@@ -115,6 +124,7 @@ function Ziel() {
         <Knopf haupt titel={sammelText} disabled={sammelAus} onPress={() => w.sammle(false)} />
         {zeigeBeruehren && <Knopf titel={beruehrText} disabled={!!(fund && fund.b) || d > w.beruehrRadius} onPress={() => w.sammle(true)} />}
         {w.manuell && <Knopf titel="Zur nächsten" onPress={w.zurNaechsten} />}
+        {fund && <Knopf titel="📤 Teilen" onPress={() => Share.share({ message: teilText(fund, Object.keys(heft.funde).length, WEB) }).catch(() => {})} />}
       </View>
       {ohneKompass && <Leise klein style={{ marginTop: 8 }}>Kein Kompass: Der Pfeil zeigt relativ zu Norden (oben).</Leise>}
       {w.test && <Leise klein style={{ marginTop: 8 }}>Testmodus aktiv – feste Position, Sammeln ohne Entfernungsgrenze.</Leise>}

@@ -1,6 +1,6 @@
 // Service Worker: App und Anlagendaten offline verfügbar halten.
 // Bei Änderungen an App-Dateien VERSION erhöhen, damit iPhones die neue Fassung laden.
-const VERSION = 'v13';
+const VERSION = 'v14';
 const APP = [
   './', 'index.html', 'datenschutz.html', 'nutzungsbedingungen.html', 'style.css', 'app.js', 'online.js', 'config.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png',
@@ -39,4 +39,18 @@ self.addEventListener('fetch', (e) => {
   }
   // App-Dateien: Cache zuerst, sonst Netz
   e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((r) => r || fetch(e.request)));
+});
+
+// Tipp auf „Neue Anlage sammelbar“: App nach vorne holen (oder öffnen) und die Anlage auswählen
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const id = e.notification.data && e.notification.data.id;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((liste) => {
+    const app = liste[0];
+    if (app) {
+      if (id) app.postMessage({ typ: 'anlage', id });
+      return app.focus();
+    }
+    return self.clients.openWindow('./');
+  }));
 });

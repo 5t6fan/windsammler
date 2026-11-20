@@ -296,3 +296,19 @@ export function perioden(s, art) {
   }
   return liste;
 }
+
+// Text zum Teilen eines Fundes (Messenger usw.) – mit Gemeinde, aber ohne genaue Koordinaten
+export function teilText(f, anzahl, url) {
+  const zeilen = ['🌬️ Gesammelt im Windsammler: ' + fundTitel(f) + (f.ort ? ' in ' + f.ort : '') + ' (' + datum(f.t) + ')'];
+  const werte = [];
+  if (f.kw) werte.push(fmt.format(f.kw / 1000) + ' MW');
+  if (f.nabe) werte.push('Nabe ' + fmt0.format(f.nabe) + ' m');
+  if (f.rotor) werte.push('Rotor ' + fmt0.format(f.rotor) + ' m');
+  if (f.ibn) werte.push('seit ' + f.ibn.slice(0, 4));
+  if (werte.length) zeilen.push(werte.join(' · '));
+  if (f.erst) zeilen.push('🚩 Als Erste/r überhaupt entdeckt!');
+  if (f.erstB) zeilen.push('🖐️ Als Erste/r den Turm berührt!');
+  else if (f.b) zeilen.push('🤚 Turm berührt');
+  zeilen.push('Mein Sammelheft: ' + anzahl + (anzahl === 1 ? ' Anlage' : ' Anlagen') + '. Sammel mit: ' + url);
+  return zeilen.join('\n');
+}

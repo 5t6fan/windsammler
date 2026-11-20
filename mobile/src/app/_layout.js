@@ -1,10 +1,12 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WindProvider, useWind } from '../zustand';
 import { useFarben } from '../farben';
+import { Blatt, Knopf, Leise } from '../ui';
+import { BEDINGUNGEN_URL } from '../config';
 
 export default function Layout() {
   return (
@@ -15,6 +17,7 @@ export default function Layout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
         <Meldung />
+        <Sicherheit />
       </WindProvider>
     </SafeAreaProvider>
   );
@@ -35,6 +38,46 @@ function Meldung() {
   );
 }
 
+// Sicherheitshinweis: vor dem ersten Start der Standortsuche bestätigen, danach jederzeit wieder aufrufbar
+const PUNKTE = [
+  'Betritt nur frei zugängliche Wege und Flächen. Beachte Absperrungen, Schilder und Anweisungen von Betreibern, Landwirten und Jägern.',
+  'Halte großen Abstand bei Frost (Eiswurf von den Rotorblättern), Gewitter, Sturm sowie bei Bau- und Wartungsarbeiten.',
+  'Klettere nicht auf Anlagen, Zäune oder Bauteile. „Turm berühren“ nur, wo der Turm frei und gefahrlos erreichbar ist.',
+  'Bediene die App nicht beim Fahren und achte auf den Verkehr.',
+  'Standorte aus dem Marktstammdatenregister können ungenau sein.',
+];
+
+function Sicherheit() {
+  const w = useWind();
+  const c = useFarben();
+  const offen = !!w.sicherheitOffen;
+  const verstanden = () => {
+    const starten = w.sicherheitOffen === 'start';
+    w.bestaetigeSicherheit();
+    if (starten) w.starteStandort();
+  };
+  return (
+    <Blatt titel="⚠️ Sicherheit geht vor" sichtbar={offen} onZu={() => w.setSicherheitOffen(false)}>
+      <Text style={[st.absatz, { color: c.text }]}>Windparks sind Betriebsgelände und liegen meist auf Privatgrund.</Text>
+      {PUNKTE.map((p) => (
+        <View key={p} style={st.punktZeile}>
+          <Text style={{ color: c.text, fontSize: 15 }}>•</Text>
+          <Text style={[st.absatz, { color: c.text, flex: 1, marginVertical: 0 }]}>{p}</Text>
+        </View>
+      ))}
+      <Text style={[st.absatz, { color: c.text }]}>
+        <Text style={{ fontWeight: '700' }}>Die Suche nach Windenergieanlagen und das Betreten von Windparkflächen erfolgen auf eigene Gefahr. </Text>
+        Für Unfälle, Schäden oder Verstöße, die bei der Suche oder vor Ort entstehen, übernehmen wir im gesetzlich zulässigen
+        Rahmen keine Verantwortung. Punkte und Abzeichen sind kein Grund, Risiken einzugehen.
+      </Text>
+      <Pressable onPress={() => Linking.openURL(BEDINGUNGEN_URL)} accessibilityRole="link">
+        <Leise klein style={{ textDecorationLine: 'underline', marginBottom: 16 }}>Mehr in den Nutzungsbedingungen</Leise>
+      </Pressable>
+      <Knopf haupt titel="Verstanden" onPress={verstanden} />
+    </Blatt>
+  );
+}
+
 function useTastaturHoehe() {
   const [hoehe, setHoehe] = useState(0);
   useEffect(() => {
@@ -49,4 +92,6 @@ function useTastaturHoehe() {
 const st = StyleSheet.create({
   meldung: { position: 'absolute', left: 24, right: 24, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16, alignItems: 'center' },
   text: { fontWeight: '600', textAlign: 'center', fontSize: 15 },
+  absatz: { fontSize: 15, lineHeight: 21, marginVertical: 8 },
+  punktZeile: { flexDirection: 'row', gap: 8, marginVertical: 4 },
 });
