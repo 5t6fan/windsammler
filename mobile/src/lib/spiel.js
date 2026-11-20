@@ -312,3 +312,9 @@ export function teilText(f, anzahl, url) {
   zeilen.push('Mein Sammelheft: ' + anzahl + (anzahl === 1 ? ' Anlage' : ' Anlagen') + '. Sammel mit: ' + url);
   return zeilen.join('\n');
 }
+
+// Text zum Teilen eines erhaltenen Abzeichens
+export function abzeichenText(a, erhalten, anzahlAbzeichen, anzahlFunde, url) {
+  return a.ico + ' Abzeichen „' + a.name + '“ im Windsammler erhalten: ' + a.text + ' (' + datum(erhalten) + ')\n' +
+    'Bisher ' + anzahlAbzeichen + ' Abzeichen und ' + anzahlFunde + (anzahlFunde === 1 ? ' Anlage' : ' Anlagen') + ' gesammelt. Sammel mit: ' + url;
+}

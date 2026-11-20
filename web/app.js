@@ -995,9 +995,15 @@ $('#heft-abzeichen').addEventListener('click', (e) => {
   zeigeSheet(a.ico + ' ' + a.name,
     '<p>' + esc(a.text) + '</p>' +
     '<p class="leise klein">' + (hat ? 'Erhalten am ' + datum(hat) : 'Noch nicht erreicht') + '</p>' +
+    (hat ? '<button id="btn-abz-teilen" class="knopf breit-knopf">📤 Abzeichen teilen</button>' : '') +
     (belege.length ? '<h4 class="sheet-unter">Dafür gezählt</h4><ul class="belege">' +
       belege.slice(0, max).map((x) => '<li>' + esc(x) + '</li>').join('') +
       (belege.length > max ? '<li class="leise">… und ' + (belege.length - max) + ' weitere</li>' : '') + '</ul>' : ''));
+  if (hat) {
+    $('#btn-abz-teilen').addEventListener('click', () => teile(a.ico + ' Abzeichen „' + a.name + '“ im Windsammler erhalten: ' + a.text + ' (' + datum(hat) + ')\n' +
+      'Bisher ' + Object.keys(S.heft.abzeichen).length + ' Abzeichen und ' + s.funde.length + (s.funde.length === 1 ? ' Anlage' : ' Anlagen') +
+      ' gesammelt. Sammel mit: ' + APP_URL));
+  }
 });
 
 /* Persönlicher Verlauf: je Monat oder Jahr */
@@ -1152,8 +1158,10 @@ function teilText(f) {
 
 function teileFund(id) {
   const f = S.heft.funde[id];
-  if (!f) return;
-  const text = teilText(f);
+  if (f) teile(teilText(f));
+}
+
+function teile(text) {
   if (navigator.share) navigator.share({ text }).catch(() => {});
   else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => toast('Text zum Teilen kopiert'), () => toast('Teilen nicht möglich'));
   else toast('Teilen wird von diesem Browser nicht unterstützt');

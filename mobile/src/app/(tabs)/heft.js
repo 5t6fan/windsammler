@@ -9,7 +9,7 @@ import { useFarben } from '../../farben';
 import { fmt, fmt0, datum } from '../../lib/format';
 import {
   statistik, herstellerFortschritt, QUARTETTE, quartettStand, ABZEICHEN, dynamischeAbzeichen,
-  perioden, fundTitel, istAbgebaut, teilText, SAMMEL_RADIUS,
+  perioden, fundTitel, istAbgebaut, teilText, abzeichenText, SAMMEL_RADIUS,
 } from '../../lib/spiel';
 import { WEB } from '../../config';
 import { Karte, Knopf, Chips, Abschnitt, Leise, Etikett, Fortschritt, Blatt } from '../../ui';
@@ -108,6 +108,11 @@ function Abzeichen({ s, oeffne }) {
         <View>
           <Text style={{ color: c.text, fontSize: 16 }}>{a.text}</Text>
           <Leise klein style={{ marginTop: 4 }}>{hat ? 'Erhalten am ' + datum(hat) : 'Noch nicht erreicht'}</Leise>
+          {hat && (
+            <Knopf titel="📤 Abzeichen teilen" style={{ marginTop: 12 }} onPress={() => Share.share({
+              message: abzeichenText(a, hat, Object.keys(heft.abzeichen).length, s.funde.length, WEB),
+            }).catch(() => {})} />
+          )}
           {belege.length > 0 && <Abschnitt>Dafür gezählt</Abschnitt>}
           {belege.slice(0, 40).map((b, i) => <Text key={i} style={{ color: c.text, paddingVertical: 3 }}>• {b}</Text>)}
           {belege.length > 40 && <Leise>… und {belege.length - 40} weitere</Leise>}
