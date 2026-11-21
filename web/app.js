@@ -461,7 +461,7 @@ function tags(a, fund) {
   const n = modellZahl(a);
   if (n === 1) t.push('<span class="tag selten">🦄 Unikat</span>');
   else if (n && n <= 20) t.push('<span class="tag selten">💎 selten</span>');
-  if (a.ibn && a.ibn < '2000' && !a.planung) t.push('<span class="tag">🕰️ Oldtimer</span>');
+  if (a.ibn && a.ibn < '2000' && !a.planung) t.push('<span class="tag">🕰️ Oldtimy</span>');
   if (a.nabe >= 160) t.push('<span class="tag">🗼 Riesy</span>');
   if (istKuhkratzer(a)) t.push('<span class="tag">🐄 Kuhkratzy</span>');
   return t.join('');
@@ -881,7 +881,7 @@ const ABZEICHEN = [
   { k: 'm6', ico: '🎖️', name: 'Markenprofy', text: '6 Hersteller', test: (s) => s.marken.size >= 6, belege: markenBelege },
   { k: 't10', ico: '🧩', name: 'Typensammly', text: '10 Modelle', test: (s) => s.modelle.size >= 10, belege: modellBelege },
   { k: 't25', ico: '📚', name: 'Typenlexikon', text: '25 Modelle', test: (s) => s.modelle.size >= 25, belege: modellBelege },
-  { k: 'alt', ico: '🕰️', name: 'Oldtimer', text: 'Baujahr vor 2000', fund: (f) => f.ibn && f.ibn < '2000' },
+  { k: 'alt', ico: '🕰️', name: 'Oldtimy', text: 'Baujahr vor 2000', fund: (f) => f.ibn && f.ibn < '2000' },
   { k: 'riese', ico: '🗼', name: 'Riesy', text: 'Nabe ab 160 m', fund: (f) => f.nabe >= 160 },
   { k: 'zwerg', ico: '🐭', name: 'Winzy', text: 'Nabe unter 50 m', fund: (f) => f.nabe && f.nabe < 50 },
   { k: 'kuh', ico: '🐄', name: 'Kuhkratzy', text: 'Blattspitze unter ' + KUHKRATZER + ' m über dem Boden', fund: istKuhkratzer },
