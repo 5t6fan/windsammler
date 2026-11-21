@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useWind } from '../../zustand';
 import { useFarben, PUNKT } from '../../farben';
 import { anlage } from '../../lib/daten';
@@ -13,6 +14,7 @@ import { Bewertungen, Entdecker } from '../../bewertungen';
 
 const LISTE_MAX = 50;
 const KARTE_MAX = 1000;  // so viele Punkte höchstens auf der Karte – reicht für 25 km auch in dichten Gegenden
+const KARTENBILD = 'windsammler.kartenbild';   // 'luftbild' = Satellitenbild mit Beschriftung
 
 export default function Naehe() {
   const w = useWind();
@@ -144,6 +146,13 @@ function Kartenbereich() {
   const c = useFarben();
   const karte = useRef(null);
   const [funde, setFunde] = useState(false);
+  const [luftbild, setLuftbild] = useState(false);
+  useEffect(() => { AsyncStorage.getItem(KARTENBILD).then((v) => setLuftbild(v === 'luftbild')).catch(() => {}); }, []);
+  const wechsleBild = () => {
+    const an = !luftbild;
+    setLuftbild(an);
+    AsyncStorage.setItem(KARTENBILD, an ? 'luftbild' : 'karte').catch(() => {});
+  };
   const zentriert = useRef(false);
   const { D, pos, sel, nah, heft } = w;
 
@@ -220,6 +229,7 @@ function Kartenbereich() {
     <View style={[st.kartenRahmen, { borderColor: c.linie }]}>
       <MapView
         ref={karte} style={StyleSheet.absoluteFill} showsUserLocation={!w.test} showsCompass={false} toolbarEnabled={false} rotateEnabled={false}
+        mapType={luftbild ? 'hybrid' : 'standard'}
         initialRegion={{ latitude: pos ? pos.lat : 51.2, longitude: pos ? pos.lon : 10.4, latitudeDelta: pos ? 0.08 : 7, longitudeDelta: pos ? 0.08 : 7 }}>
         {punktMarker}
         {sel != null && (
@@ -257,6 +267,10 @@ function Kartenbereich() {
       <Pressable onPress={zeigeFunde} accessibilityLabel="Meine Funde auf der Karte" accessibilityState={{ selected: funde }}
         style={[st.kartenKnopf, { top: 10, backgroundColor: funde ? c.gold : c.flaeche, borderColor: c.linie }]}>
         <Text style={{ fontSize: 20, color: funde ? '#fff' : c.text }}>★</Text>
+      </Pressable>
+      <Pressable onPress={wechsleBild} accessibilityLabel={luftbild ? 'Kartenansicht' : 'Luftbild'} accessibilityState={{ selected: luftbild }}
+        style={[st.kartenKnopf, { top: 62, backgroundColor: luftbild ? c.gold : c.flaeche, borderColor: c.linie }]}>
+        <Text style={{ fontSize: 20 }}>{luftbild ? '🗺️' : '🛰️'}</Text>
       </Pressable>
       <Pressable onPress={zentriere} accessibilityLabel="Auf meinen Standort zentrieren"
         style={[st.kartenKnopf, { bottom: 10, backgroundColor: c.flaeche, borderColor: c.linie }]}>
@@ -296,22 +310,37 @@ function NaechsteNeue() {
   );
 }
 
+// Filter der Liste: alle, nur noch nicht gesammelte, nur gesammelte (berührte zählen als gesammelt)
 function Liste({ onWahl }) {
   const w = useWind();
   const c = useFarben();
+  const [filter, setFilter] = useState('alle');
   const { D, pos, nah, sel, heft } = w;
+  const hat = (i) => !!heft.funde[D.rows[i][D.F.id]];
+  const gesammelt = nah.filter(({ i }) => hat(i)).length;
+  const liste = filter === 'alle' ? nah : nah.filter(({ i }) => (filter === 'gesammelt') === hat(i));
+  const leer = !nah.length ? 'Keine Anlage in diesem Umkreis – vergrößere den Radius.'
+    : filter === 'offen' ? 'Alle Anlagen in diesem Umkreis hast du schon gesammelt. 🎉' : 'In diesem Umkreis hast du noch nichts gesammelt.';
   return (
     <>
-      <Abschnitt>Im Umkreis von {entfernung(w.radius)} ({fmt0.format(nah.length)})</Abschnitt>
+      <Abschnitt>Im Umkreis von {entfernung(w.radius)} ({filter === 'alle' ? fmt0.format(nah.length) : fmt0.format(liste.length) + ' von ' + fmt0.format(nah.length)})</Abschnitt>
+      <View style={{ marginBottom: 8 }}>
+        <Chips werte={[['alle', 'Alle ' + fmt0.format(nah.length)], ['offen', 'Noch nicht gesammelt ' + fmt0.format(nah.length - gesammelt)],
+          ['gesammelt', '✓ Gesammelt ' + fmt0.format(gesammelt)]]} wert={filter} onWahl={setFilter} />
+      </View>
       <View style={[st.liste, { backgroundColor: c.flaeche, borderColor: c.linie }]}>
-        {!nah.length && <Leise style={{ padding: 16, textAlign: 'center' }}>Keine Anlage in diesem Umkreis – vergrößere den Radius.</Leise>}
-        {nah.slice(0, LISTE_MAX).map(({ i, d }, n) => {
+        {!liste.length && <Leise style={{ padding: 16, textAlign: 'center' }}>{leer}</Leise>}
+        {liste.slice(0, LISTE_MAX).map(({ i, d }, n) => {
           const a = anlage(D, i);
           const b = peilung(pos.lat, pos.lon, a.lat, a.lon);
           const f = heft.funde[a.id];
+          // gesammelt: goldener Hintergrund mit Randstreifen (wie die Punkte auf der Karte), berührt: kräftiger
+          const farbe = i === sel ? { backgroundColor: c.akzentHell }
+            : f ? { backgroundColor: f.b ? c.goldMittel : c.goldHell } : null;
           return (
             <Pressable key={i} onPress={() => { w.waehle(i); onWahl(); }}
-              style={[st.zeile, n > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.linie }, i === sel && { backgroundColor: c.akzentHell }]}>
+              style={[st.zeile, n > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.linie }, farbe,
+                f && { borderLeftWidth: 4, borderLeftColor: c.gold, paddingLeft: 10 }]}>
               <Text style={[st.pfeil, { color: c.akzent }]}>{PFEILE[sektor(b)]}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={[st.zeileTitel, { color: c.text }]} numberOfLines={1}>{titel(a)}{f ? (f.b ? ' ✓🤚' : ' ✓') : ''}</Text>
@@ -324,7 +353,7 @@ function Liste({ onWahl }) {
             </Pressable>
           );
         })}
-        {nah.length > LISTE_MAX && <Leise klein style={{ padding: 14, textAlign: 'center' }}>… und {fmt0.format(nah.length - LISTE_MAX)} weitere auf der Karte</Leise>}
+        {liste.length > LISTE_MAX && <Leise klein style={{ padding: 14, textAlign: 'center' }}>… und {fmt0.format(liste.length - LISTE_MAX)} weitere auf der Karte</Leise>}
       </View>
     </>
   );

@@ -1,4 +1,4 @@
-// Bewertungen einer Anlage in der Zielkarte. Lesen: alle angemeldeten Spieler.
+// Bewertungen einer Anlage in der Zielkarte. Lesen: alle angemeldeten Spielys.
 // Schreiben: nur wer die Anlage mit seinem Konto gesammelt hat (prüft der Server).
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -20,11 +20,11 @@ export function Entdecker({ id }) {
     return () => { aktuell = false; };
   }, [id, profil]);
   if (!e) return null;
-  const wer = (x) => (x.ich ? 'dir' : x.name || 'einem anderen Spieler') + ' am ' + datum(Date.parse(x.zeit));
+  const wer = (x) => (x.ich ? 'dir' : x.name || 'einem anderen Spiely') + ' am ' + datum(Date.parse(x.zeit));
   const zeilen = [];
   if (e.entdeckt) zeilen.push('🚩 Erstentdeckt von ' + wer(e.entdeckt));
   if (e.beruehrt) zeilen.push('🖐️ Zuerst berührt von ' + wer(e.beruehrt));
-  if (!e.entdeckt) zeilen.push('✨ Noch von niemandem entdeckt – sei die/der Erste!');
+  if (!e.entdeckt) zeilen.push('✨ Noch von niemandem entdeckt – sei das erste Entdecky!');
   return <Text style={{ marginTop: 8, fontWeight: '600', color: c.text, lineHeight: 21 }}>{zeilen.join('\n')}</Text>;
 }
 
@@ -75,7 +75,7 @@ export function Bewertungen({ id, gesammelt, zeige }) {
   ]);
   const optionen = (x) => Alert.alert(x.name, 'Was möchtest du tun?', [
     ...(x.gemeldet ? [] : [{ text: 'Kommentar melden', onPress: () => aktion(() => Online.kommentarMelden(x.id), 'Danke, gemeldet') }]),
-    { text: 'Spieler blockieren', style: 'destructive', onPress: () => Alert.alert(
+    { text: 'Spiely blockieren', style: 'destructive', onPress: () => Alert.alert(
       '„' + x.name + '“ blockieren?', 'Du siehst dann keine Kommentare dieser Person mehr. Aufheben kannst du das im Tab Rangliste.', [
         { text: 'Abbrechen', style: 'cancel' },
         { text: 'Blockieren', style: 'destructive', onPress: () => aktion(() => Online.blockieren(x.id), 'Blockiert') },
@@ -92,7 +92,7 @@ export function Bewertungen({ id, gesammelt, zeige }) {
       {offen && (
         <View>
           {fehler && <Leise klein>Bewertungen nicht ladbar ({fehler})</Leise>}
-          {zeilen && !zeilen.length && <Leise klein style={{ marginTop: 6 }}>Noch keine Bewertungen – sei die/der Erste.</Leise>}
+          {zeilen && !zeilen.length && <Leise klein style={{ marginTop: 6 }}>Noch keine Bewertungen – bewerte als Erstes.</Leise>}
           {zeilen && zeilen.map((x) => (
             <View key={x.id} style={[st.eintrag, { borderTopColor: c.linie }, x.ich && { backgroundColor: c.akzentHell, borderRadius: 10, paddingHorizontal: 8 }]}>
               <View style={st.zeile}>

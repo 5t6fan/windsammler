@@ -152,7 +152,11 @@ body.vollbild-an { overflow: hidden; }
 .liste:empty { display: none; }
 .liste li { display: flex; gap: 12px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--linie); cursor: pointer; }
 .liste li:first-child { border-top: 0; }
-.liste li.gewaehlt { background: var(--akzent-hell); }
+/* Liste „In der Nähe“: gesammelte Anlagen golden hinterlegt (wie ihre Punkte auf der Karte), berührte kräftiger */
+.liste li.hat { background: color-mix(in srgb, var(--gold) 13%, var(--flaeche)); box-shadow: inset 4px 0 0 var(--gold); }
+.liste li.hat.beruehrt { background: color-mix(in srgb, var(--gold) 26%, var(--flaeche)); }
+.liste li.gewaehlt, .liste li.gewaehlt.hat { background: var(--akzent-hell); }
+.liste-filter { flex-wrap: wrap; margin: 0 0 8px; }
 .li-pfeil { width: 28px; text-align: center; font-size: 18px; color: var(--akzent); flex: none; }
 .li-text { flex: 1; min-width: 0; }
 .li-titel { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -264,6 +268,8 @@ a.link-knopf { display: inline-block; }
 /* --- Karte: zweiter Knopf, Funde-Schalter --- */
 .map-knopf.oben.zwei { top: 62px; font-size: 20px; }
 .map-wrap.vollbild .map-knopf.oben.zwei { top: calc(64px + env(safe-area-inset-top)); }
+.map-knopf.oben.drei { top: 114px; font-size: 20px; }
+.map-wrap.vollbild .map-knopf.oben.drei { top: calc(116px + env(safe-area-inset-top)); }
 .map-knopf.an { background: var(--gold); color: #fff; border-color: transparent; }
 
 /* Nächste neue / unberührte Anlage oben links auf der Karte */

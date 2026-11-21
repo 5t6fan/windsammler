@@ -10,6 +10,15 @@ export const KUHKRATZER = 20;       // Meter – untere Blattspitze näher am Bo
 export const freiraum = (a) => (a.nabe && a.rotor ? a.nabe - a.rotor / 2 : null);
 export const istKuhkratzer = (a) => { const f = freiraum(a); return f != null && f < KUHKRATZER; };
 
+// Sonderbauformen (Feld "bauform" in wind.json, aus dem MaStR-Feld "Technologie")
+export const BAUFORM = {
+  1: { ico: '🌪️', name: 'Vertikalachser', text: 'der Rotor dreht sich um eine senkrechte Achse' },
+  2: { ico: '🪁', name: 'Flugwindanlage', text: 'ein Drachen oder Flügel am Seil erzeugt den Strom' },
+};
+
+// Wie viele Anlagen dieses Modells gibt es in Deutschland (ohne geplante)?
+const modellZahl = (D, a) => (a.modell && D.modellAnzahl.get(a.markeIdx + '|' + a.modell)) || 0;
+
 export const istAbgebaut = (D, id) => !!D && !D.idIndex.has(id);
 export const fundTitel = (f) => [f.marke, f.modell || f.typ].filter(Boolean).join(' ') || 'Windenergieanlage';
 export const fundZeile = (f) => fundTitel(f) + ' · ' + [f.ort, datum(f.t)].filter(Boolean).join(' · ');
@@ -27,7 +36,7 @@ export function aktualisiereHeft(D, heft, anlage) {
     const i = D.idIndex.get(id);
     if (i == null) continue;
     const a = anlage(D, i);
-    const neu = { lat: a.lat, lon: a.lon, marke: a.marke, modell: a.modell, rotor: a.rotor };
+    const neu = { lat: a.lat, lon: a.lon, marke: a.marke, modell: a.modell, rotor: a.rotor, bauform: a.bauform };
     for (const [k, v] of Object.entries(neu)) {
       if (v != null && f[k] !== v) { f[k] = v; geaendert = true; }
     }
@@ -47,7 +56,7 @@ export function heftAbgleichen(D, heft, liste, anlage) {
       const a = i != null ? anlage(D, i) : x;   // abgebaut: Angaben vom Server
       f = {
         t: Date.parse(x.zeit), marke: a.marke, modell: a.modell, typ: a.typ, kw: a.kw, nabe: a.nabe, rotor: a.rotor,
-        ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon,
+        ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon, bauform: a.bauform || null,
       };
       neu++;
     } else f = { ...f };
@@ -85,10 +94,12 @@ export function beschreibung(D, a) {
     else s.push('In Betrieb seit ' + jahr + (alter > 0 ? ' (' + alter + (alter === 1 ? ' Jahr' : ' Jahre') + ').' : '.'));
   }
   if (a.typ && a.modell && a.typ.toUpperCase() !== a.modell.toUpperCase()) s.push('Typ laut Register: ' + a.typ + '.');
-  const n = a.modell && D.modellAnzahl.get(a.markeIdx + '|' + a.modell);
-  if (n) {
+  if (BAUFORM[a.bauform]) s.push('Sonderbauform laut Register: ' + BAUFORM[a.bauform].name + ' – ' + BAUFORM[a.bauform].text + '.');
+  const n = modellZahl(D, a);
+  if (n === 1) s.push('Unikat: die einzige Anlage dieses Modells in Deutschland.');
+  else if (n) {
     s.push(n <= 20
-      ? 'Selten: nur ' + n + (n === 1 ? ' Anlage' : ' Anlagen') + ' dieses Modells in Deutschland.'
+      ? 'Selten: nur ' + n + ' Anlagen dieses Modells in Deutschland.'
       : 'Eine von ' + fmt0.format(n) + ' Anlagen dieses Modells in Deutschland.');
   }
   const m = a.marke && D.katalog.get(a.marke + '|' + a.modell);
@@ -105,8 +116,10 @@ export function etiketten(D, a, fund) {
   if (a.planung) t.push({ text: 'in Planung', art: 'planung' });
   else if (a.status !== 'In Betrieb') t.push({ text: a.status, art: 'planung' });
   if (a.see) t.push({ text: 'offshore', art: 'normal' });
-  const n = a.modell && D.modellAnzahl.get(a.markeIdx + '|' + a.modell);
-  if (n && n <= 20) t.push({ text: '💎 selten', art: 'selten' });
+  if (BAUFORM[a.bauform]) t.push({ text: BAUFORM[a.bauform].ico + ' ' + BAUFORM[a.bauform].name, art: 'selten' });
+  const n = modellZahl(D, a);
+  if (n === 1) t.push({ text: '🦄 Unikat', art: 'selten' });
+  else if (n && n <= 20) t.push({ text: '💎 selten', art: 'selten' });
   if (a.ibn && a.ibn < '2000' && !a.planung) t.push({ text: '🕰️ Oldtimer', art: 'normal' });
   if (a.nabe >= 160) t.push({ text: '🗼 Riese', art: 'normal' });
   if (istKuhkratzer(a)) t.push({ text: '🐄 Kuhkratzer', art: 'normal' });
@@ -139,16 +152,15 @@ export function statistik(D, heft) {
     const gesamt = (D && D.parkAnzahl.get(p)) || 0;
     if (gesamt >= 3 && n >= gesamt) parksKomplett.push(p.split('|')[0]);
   }
-  const istSelten = (f) => {
-    if (!f.modell || !D) return false;
-    const n = D.modellAnzahl.get(D.hersteller.indexOf(f.marke) + '|' + f.modell);
-    return n && n <= 20;
-  };
+  const anzahl = (f) => (f.modell && D ? D.modellAnzahl.get(D.hersteller.indexOf(f.marke) + '|' + f.modell) || 0 : 0);
+  const istSelten = (f) => { const n = anzahl(f); return n > 0 && n <= 20; };
   const laender = new Map();
   funde.forEach((f) => { if (f.land) laender.set(f.land, (laender.get(f.land) || 0) + 1); });
   return {
     funde, marken, modelle, kw, parksKomplett, laender,
     selten: funde.filter(istSelten),
+    unikate: funde.filter((f) => anzahl(f) === 1),
+    bauform: funde.filter((f) => BAUFORM[f.bauform]),
     beruehrt: funde.filter((f) => f.b),
     abgebaut: funde.filter((f) => istAbgebaut(D, f.id)),
   };
@@ -214,25 +226,27 @@ const modellBelege = (s) => [...s.marken].flatMap(([m, mod]) => [...mod.keys()].
 export const ABZEICHEN = [
   { k: 'erster', ico: '🌱', name: 'Erster Fund', text: 'Die erste Anlage', test: (s) => s.funde.length >= 1, belege: (s) => s.funde.slice(0, 1).map(fundZeile) },
   { k: 'a10', ico: '🎯', name: 'Zehnerpack', text: '10 Anlagen', test: (s) => s.funde.length >= 10, belege: (s) => [fundZeile(s.funde[9]) + ' (Nr. 10)'] },
-  { k: 'a50', ico: '🏅', name: 'Windjäger', text: '50 Anlagen', test: (s) => s.funde.length >= 50, belege: (s) => [fundZeile(s.funde[49]) + ' (Nr. 50)'] },
+  { k: 'a50', ico: '🏅', name: 'Windjägy', text: '50 Anlagen', test: (s) => s.funde.length >= 50, belege: (s) => [fundZeile(s.funde[49]) + ' (Nr. 50)'] },
   { k: 'a100', ico: '🏆', name: 'Hundertschaft', text: '100 Anlagen', test: (s) => s.funde.length >= 100, belege: (s) => [fundZeile(s.funde[99]) + ' (Nr. 100)'] },
-  { k: 'm3', ico: '🏷️', name: 'Markenkenner', text: '3 Hersteller', test: (s) => s.marken.size >= 3, belege: markenBelege },
-  { k: 'm6', ico: '🎖️', name: 'Markenprofi', text: '6 Hersteller', test: (s) => s.marken.size >= 6, belege: markenBelege },
-  { k: 't10', ico: '🧩', name: 'Typensammler', text: '10 Modelle', test: (s) => s.modelle.size >= 10, belege: modellBelege },
+  { k: 'm3', ico: '🏷️', name: 'Markenkenny', text: '3 Hersteller', test: (s) => s.marken.size >= 3, belege: markenBelege },
+  { k: 'm6', ico: '🎖️', name: 'Markenprofy', text: '6 Hersteller', test: (s) => s.marken.size >= 6, belege: markenBelege },
+  { k: 't10', ico: '🧩', name: 'Typensammly', text: '10 Modelle', test: (s) => s.modelle.size >= 10, belege: modellBelege },
   { k: 't25', ico: '📚', name: 'Typenlexikon', text: '25 Modelle', test: (s) => s.modelle.size >= 25, belege: modellBelege },
   { k: 'alt', ico: '🕰️', name: 'Oldtimer', text: 'Baujahr vor 2000', fund: (f) => f.ibn && f.ibn < '2000' },
   { k: 'riese', ico: '🗼', name: 'Riese', text: 'Nabe ab 160 m', fund: (f) => f.nabe >= 160 },
   { k: 'zwerg', ico: '🐭', name: 'Winzling', text: 'Nabe unter 50 m', fund: (f) => f.nabe && f.nabe < 50 },
   { k: 'kuh', ico: '🐄', name: 'Kuhkratzer', text: 'Blattspitze unter ' + KUHKRATZER + ' m über dem Boden', fund: istKuhkratzer },
   { k: 'selten', ico: '💎', name: 'Rarität', text: 'Modell mit ≤ 20 Anlagen', test: (s) => s.selten.length > 0, belege: (s) => s.selten.map(fundZeile) },
+  { k: 'unikat', ico: '🦄', name: 'Unikat', text: 'Modell, das es in Deutschland nur einmal gibt', test: (s) => s.unikate.length > 0, belege: (s) => s.unikate.map(fundZeile) },
+  { k: 'vertikal', ico: '🌪️', name: 'Senkrechtstarty', text: 'Sonderbauform, z. B. Vertikalachser', test: (s) => s.bauform.length > 0, belege: (s) => s.bauform.map((f) => fundZeile(f) + ' · ' + BAUFORM[f.bauform].name) },
   { k: 'park', ico: '🌬️', name: 'Park komplett', text: 'Alle Anlagen eines Windparks', test: (s) => s.parksKomplett.length > 0, belege: (s) => s.parksKomplett },
   { k: 'mw100', ico: '⚡', name: '100 Megawatt', text: 'Gesammelte Leistung', test: (s) => s.kw >= 100000, belege: (s) => [fmt.format(s.kw / 1000) + ' MW aus ' + s.funde.length + ' Anlagen'] },
-  { k: 'land3', ico: '🗺️', name: 'Grenzgänger', text: '3 Bundesländer', test: (s) => s.laender.size >= 3, belege: (s) => [...s.laender].map(([l, n]) => l + ' · ' + n + ' Anlagen') },
+  { k: 'land3', ico: '🗺️', name: 'Grenzgängy', text: '3 Bundesländer', test: (s) => s.laender.size >= 3, belege: (s) => [...s.laender].map(([l, n]) => l + ' · ' + n + ' Anlagen') },
   { k: 'b1', ico: '🤚', name: 'Handauflegen', text: 'Einen Turm berührt', test: (s) => s.beruehrt.length >= 1, belege: (s) => s.beruehrt.map(fundZeile) },
-  { k: 'b10', ico: '🙌', name: 'Turmstreichler', text: '10 Türme berührt', test: (s) => s.beruehrt.length >= 10, belege: (s) => s.beruehrt.map(fundZeile) },
-  { k: 'pionier', ico: '🚩', name: 'Pionier', text: 'Als Erste/r überhaupt entdeckt', fund: (f) => f.erst },
-  { k: 'erstkontakt', ico: '🖐️', name: 'Erstkontakt', text: 'Als Erste/r einen Turm berührt', fund: (f) => f.erstB },
-  { k: 'zeitzeuge', ico: '🪦', name: 'Zeitzeuge', text: 'Gesammelte Anlage wurde abgebaut', test: (s) => s.abgebaut.length > 0, belege: (s) => s.abgebaut.map((f) => fundTitel(f) + ' · ' + (f.ort || '')) },
+  { k: 'b10', ico: '🙌', name: 'Turmstreichly', text: '10 Türme berührt', test: (s) => s.beruehrt.length >= 10, belege: (s) => s.beruehrt.map(fundZeile) },
+  { k: 'pionier', ico: '🚩', name: 'Pioniery', text: 'Als Erstes überhaupt entdeckt', fund: (f) => f.erst },
+  { k: 'erstkontakt', ico: '🖐️', name: 'Erstkontakt', text: 'Als Erstes einen Turm berührt', fund: (f) => f.erstB },
+  { k: 'zeitzeuge', ico: '🪦', name: 'Zeitzeugy', text: 'Gesammelte Anlage wurde abgebaut', test: (s) => s.abgebaut.length > 0, belege: (s) => s.abgebaut.map((f) => fundTitel(f) + ' · ' + (f.ort || '')) },
 ];
 ABZEICHEN.forEach((a) => {
   if (!a.fund) return;
@@ -299,22 +313,22 @@ export function perioden(s, art) {
 
 // Text zum Teilen eines Fundes (Messenger usw.) – mit Gemeinde, aber ohne genaue Koordinaten
 export function teilText(f, anzahl, url) {
-  const zeilen = ['🌬️ Gesammelt im Windsammler: ' + fundTitel(f) + (f.ort ? ' in ' + f.ort : '') + ' (' + datum(f.t) + ')'];
+  const zeilen = ['🌬️ Gespottet mit turbineSpotty: ' + fundTitel(f) + (f.ort ? ' in ' + f.ort : '') + ' (' + datum(f.t) + ')'];
   const werte = [];
   if (f.kw) werte.push(fmt.format(f.kw / 1000) + ' MW');
   if (f.nabe) werte.push('Nabe ' + fmt0.format(f.nabe) + ' m');
   if (f.rotor) werte.push('Rotor ' + fmt0.format(f.rotor) + ' m');
   if (f.ibn) werte.push('seit ' + f.ibn.slice(0, 4));
   if (werte.length) zeilen.push(werte.join(' · '));
-  if (f.erst) zeilen.push('🚩 Als Erste/r überhaupt entdeckt!');
-  if (f.erstB) zeilen.push('🖐️ Als Erste/r den Turm berührt!');
+  if (f.erst) zeilen.push('🚩 Als Erstes überhaupt entdeckt!');
+  if (f.erstB) zeilen.push('🖐️ Als Erstes den Turm berührt!');
   else if (f.b) zeilen.push('🤚 Turm berührt');
-  zeilen.push('Mein Sammelheft: ' + anzahl + (anzahl === 1 ? ' Anlage' : ' Anlagen') + '. Sammel mit: ' + url);
+  zeilen.push('Mein Sammelheft: ' + anzahl + (anzahl === 1 ? ' Anlage' : ' Anlagen') + '. Spotte mit: ' + url);
   return zeilen.join('\n');
 }
 
 // Text zum Teilen eines erhaltenen Abzeichens
 export function abzeichenText(a, erhalten, anzahlAbzeichen, anzahlFunde, url) {
-  return a.ico + ' Abzeichen „' + a.name + '“ im Windsammler erhalten: ' + a.text + ' (' + datum(erhalten) + ')\n' +
-    'Bisher ' + anzahlAbzeichen + ' Abzeichen und ' + anzahlFunde + (anzahlFunde === 1 ? ' Anlage' : ' Anlagen') + ' gesammelt. Sammel mit: ' + url;
+  return a.ico + ' Abzeichen „' + a.name + '“ bei turbineSpotty erhalten: ' + a.text + ' (' + datum(erhalten) + ')\n' +
+    'Bisher ' + anzahlAbzeichen + ' Abzeichen und ' + anzahlFunde + (anzahlFunde === 1 ? ' Anlage' : ' Anlagen') + ' gesammelt. Spotte mit: ' + url;
 }

@@ -1,4 +1,4 @@
-// Online-Teil: Spielerkonto, Gruppen, Ranglisten, Punkte beim Sammeln, Bewertungen, Blockieren.
+// Online-Teil: Spielykonto, Gruppen, Ranglisten, Punkte beim Sammeln, Bewertungen, Blockieren.
 // Dieselbe Supabase-Datenbank und dieselben Funktionen wie web/online.js.
 import 'expo-sqlite/localStorage/install';
 import { AppState } from 'react-native';
@@ -39,7 +39,7 @@ const netzfehler = (e) => /fetch|network|load failed|timeout|Netzwerk/i.test((e 
 
 export function fehlertext(e) {
   if (netzfehler(e)) return 'Keine Verbindung';
-  if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielername ist schon vergeben. Dein altes Konto? Dann „Mit Passwort anmelden“.';
+  if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielyname ist schon vergeben. Dein altes Konto? Dann „Mit Passwort anmelden“.';
   return (e && e.message) || 'Unbekannter Fehler';
 }
 
@@ -111,7 +111,7 @@ export async function anmelden(name, captchaToken) {
   sendeWarteschlange();
 }
 
-// Altes Konto mit Spielername + Passwort in diese Sitzung übernehmen (Funde, Gruppen, Bewertungen kommen mit)
+// Altes Konto mit Spielyname + Passwort in diese Sitzung übernehmen (Funde, Gruppen, Bewertungen kommen mit)
 export async function anmeldenMitPasswort(name, passwort, captchaToken) {
   name = name.trim();
   if (name.length < 2) throw new Error('Bitte mindestens 2 Zeichen');
@@ -317,6 +317,7 @@ export async function blockieren(kommentarId) {
   kommentarCache.clear();
 }
 export const blockierte = () => rpc('blockierte_lesen');
+export const feedbackSenden = (text) => rpc('feedback_senden', { p_text: text });
 export async function entblocken(id) {
   await rpc('entblocken', { p_id: id });
   kommentarCache.clear();

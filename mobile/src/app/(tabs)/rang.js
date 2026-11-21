@@ -37,7 +37,7 @@ function Link({ text, url }) {
   );
 }
 
-/* ---------- Anmeldung mit Spielername und Sicherheitsprüfung ---------- */
+/* ---------- Anmeldung mit Spielyname und Sicherheitsprüfung ---------- */
 
 function Anmelden() {
   const c = useFarben();
@@ -80,14 +80,14 @@ function Anmelden() {
 
   return (
     <Karte style={{ alignItems: 'center', paddingVertical: 24 }}>
-      <Text style={[st.titel, { color: c.text }]}>Mit Freunden um die Wette sammeln</Text>
+      <Text style={[st.titel, { color: c.text }]}>Mit Freundys um die Wette sammeln</Text>
       <Leise style={{ textAlign: 'center' }}>
         {mitPasswort
-          ? 'Melde dich mit Spielername und dem Passwort an, das du in deinem Konto festgelegt hast. Punkte, Gruppen und Bewertungen kommen mit.'
-          : 'Wähle einen Spielernamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.'}
+          ? 'Melde dich mit Spielyname und dem Passwort an, das du in deinem Konto festgelegt hast. Punkte, Gruppen und Bewertungen kommen mit.'
+          : 'Wähle einen Spielynamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.'}
       </Leise>
       <TextInput
-        value={name} onChangeText={(t) => { setName(t); setFehler(null); }} maxLength={24} placeholder="Spielername" placeholderTextColor={c.leise}
+        value={name} onChangeText={(t) => { setName(t); setFehler(null); }} maxLength={24} placeholder="Spielyname" placeholderTextColor={c.leise}
         autoCorrect={false} autoCapitalize="none" textContentType={mitPasswort ? 'username' : 'nickname'} accessibilityHint={fehler || undefined}
         style={[st.eingabe, { color: c.text, borderColor: fehler ? c.gewaehlt : c.linie, backgroundColor: c.bg, textAlign: 'center', marginTop: 14 }]} />
       {mitPasswort && <TextInput
@@ -108,10 +108,10 @@ function Anmelden() {
       <Knopf haupt titel={laeuft ? 'Einen Moment …' : mitPasswort ? 'Anmelden' : 'Los geht’s'}
         disabled={(!token && !sitzung) || laeuft || name.trim().length < 2 || (mitPasswort && !passwort)} onPress={los} style={{ alignSelf: 'stretch' }} />
       <Pressable onPress={() => { setMitPasswort(!mitPasswort); setFehler(null); }} accessibilityRole="button" hitSlop={8} style={{ paddingVertical: 12 }}>
-        <Text style={{ color: c.leise, textDecorationLine: 'underline' }}>{mitPasswort ? 'Neu hier? Spielerkonto anlegen' : 'Schon ein Konto? Mit Passwort anmelden'}</Text>
+        <Text style={{ color: c.leise, textDecorationLine: 'underline' }}>{mitPasswort ? 'Neu hier? Spielykonto anlegen' : 'Schon ein Konto? Mit Passwort anmelden'}</Text>
       </Pressable>
       {!mitPasswort && <Leise klein style={{ textAlign: 'center' }}>
-        Mit „Los geht’s“ wird ein Spielerkonto angelegt und du akzeptierst die Nutzungsbedingungen. Details in der Datenschutzerklärung.
+        Mit „Los geht’s“ wird ein Spielykonto angelegt und du akzeptierst die Nutzungsbedingungen. Details in der Datenschutzerklärung.
       </Leise>}
       <Links />
     </Karte>
@@ -130,7 +130,7 @@ function Spiel() {
   const [zeilen, setZeilen] = useState(null);
   const [fehler, setFehler] = useState(null);
   const [blockiert, setBlockiert] = useState([]);
-  const [profil, setProfil] = useState(null);   // angetipptes Spielerprofil
+  const [profil, setProfil] = useState(null);   // angetipptes Spielyprofil
   const [neuerName, setNeuerName] = useState(null);
   const [namensFehler, setNamensFehler] = useState(null);
   const [code, setCode] = useState('');
@@ -164,7 +164,7 @@ function Spiel() {
   };
 
   const einladen = () => Share.share({
-    message: 'Sammle mit mir Windräder in der Gruppe „' + g.name + '“! Einladungscode: ' + g.code + '\nWindsammler: ' + WEB,
+    message: 'Sammle mit mir Windräder in der Gruppe „' + g.name + '“! Einladungscode: ' + g.code + '\nturbineSpotty: ' + WEB,
   });
 
   const verlassen = () => Alert.alert('Gruppe „' + g.name + '“ verlassen?', '', [
@@ -181,7 +181,7 @@ function Spiel() {
     <View>
       <Karte style={st.ichKarte}>
         <View style={{ flex: 1 }}>
-          <Leise klein>Spielername</Leise>
+          <Leise klein>Spielyname</Leise>
           {neuerName == null ? (
             <Pressable onPress={() => setNeuerName(o.profil.name)} accessibilityRole="button" accessibilityHint="Antippen zum Ändern">
               <Text style={[st.name, { color: c.text }]}>{o.profil.name} <Text style={{ fontSize: 14, color: c.leise }}>✎</Text></Text>
@@ -269,7 +269,7 @@ function Spiel() {
       <Abschnitt>Punkte</Abschnitt>
       <Karte>
         {[['Jede Anlage', '+1'], ['Neues Modell', '+5'], ['Neue Marke', '+10'], ['Seltenes Modell (≤ 20 in Deutschland)', '+20'],
-          ['Als Erste/r überhaupt gesammelt', '+3'], ['Turm berührt (unter 20 m)', '+2'], ['Als Erste/r überhaupt berührt', '+3']].map(([t, p_], n) => (
+          ['Als Erstes überhaupt gesammelt', '+3'], ['Turm berührt (unter 20 m)', '+2'], ['Als Erstes überhaupt berührt', '+3']].map(([t, p_], n) => (
           <View key={t} style={[st.regel, n > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.linie }]}>
             <Text style={{ color: c.text, flex: 1 }}>{t}</Text>
             <Text style={{ color: c.akzent, fontWeight: '700' }}>{p_}</Text>
@@ -278,7 +278,7 @@ function Spiel() {
         <Leise klein style={{ marginTop: 10 }}>Gewertet werden Funde, die du nach der Anmeldung sammelst. Der Server prüft, dass du wirklich in der Nähe der Anlage warst – deine Position wird dabei nicht gespeichert.</Leise>
       </Karte>
 
-      <Abschnitt>Blockierte Spieler</Abschnitt>
+      <Abschnitt>Blockierte Spielys</Abschnitt>
       <View style={[st.liste, { backgroundColor: c.flaeche, borderColor: c.linie }]}>
         {!blockiert.length && <Leise style={st.leer}>Du hast niemanden blockiert.</Leise>}
         {blockiert.map((b, n) => (
@@ -293,12 +293,43 @@ function Spiel() {
         ))}
       </View>
 
+      <Feedback />
+
       <Pressable onPress={loeschen} style={{ paddingVertical: 14 }}>
         <Text style={{ color: c.leise, textDecorationLine: 'underline' }}>Konto löschen</Text>
       </Pressable>
       <Links />
       <Profil p={profil} onZu={() => setProfil(null)} />
     </View>
+  );
+}
+
+/* ---------- Feedback an das Team (landet auf der Admin-Seite, Mail-Hinweis an das Betreiby) ---------- */
+
+function Feedback() {
+  const c = useFarben();
+  const { zeige } = useWind();
+  const [text, setText] = useState('');
+  const [laeuft, setLaeuft] = useState(false);
+  const senden = async () => {
+    setLaeuft(true);
+    try {
+      await Online.feedbackSenden(text);
+      setText('');
+      zeige('Danke! Dein Feedback ist angekommen.');
+    } catch (e) { zeige('Senden fehlgeschlagen: ' + Online.fehlertext(e)); }
+    setLaeuft(false);
+  };
+  return (
+    <>
+      <Abschnitt>Feedback</Abschnitt>
+      <Karte>
+        <Leise klein style={{ marginBottom: 10 }}>Idee, Fehler oder falsche Anlagendaten? Schreib direkt an das Team von turbineSpotty. Bitte keine persönlichen Daten anderer.</Leise>
+        <TextInput value={text} onChangeText={setText} maxLength={1000} multiline placeholder="Dein Feedback" placeholderTextColor={c.leise}
+          style={[st.eingabe, { minHeight: 96, paddingTop: 12, textAlignVertical: 'top', color: c.text, borderColor: c.linie, backgroundColor: c.bg }]} />
+        <Knopf haupt titel={laeuft ? 'Einen Moment …' : 'Senden'} disabled={laeuft || text.trim().length < 3} onPress={senden} style={{ marginTop: 10 }} />
+      </Karte>
+    </>
   );
 }
 
@@ -325,7 +356,7 @@ function KontoSichern() {
       <Text style={{ fontWeight: '700', color: c.text }}>{o.hatPasswort ? 'Passwort ändern' : '⚠️ Konto sichern'}</Text>
       <Leise klein style={{ marginTop: 4, marginBottom: 10 }}>
         {o.hatPasswort
-          ? 'Dein Konto ist mit einem Passwort gesichert. Auf einem anderen Gerät oder nach einer Neuinstallation: „Mit Passwort anmelden“ mit deinem Spielernamen.'
+          ? 'Dein Konto ist mit einem Passwort gesichert. Auf einem anderen Gerät oder nach einer Neuinstallation: „Mit Passwort anmelden“ mit deinem Spielynamen.'
           : 'Dein Konto hängt nur an dieser App-Installation. Lege ein Passwort fest, damit du dich nach einer Neuinstallation oder auf einem anderen Gerät (auch in der Web-App) wieder anmelden kannst.'}
       </Leise>
       <View style={st.zeileEingabe}>
@@ -338,7 +369,7 @@ function KontoSichern() {
   );
 }
 
-/* ---------- Spielerprofil (aus der Rangliste angetippt) ---------- */
+/* ---------- Spielyprofil (aus der Rangliste angetippt) ---------- */
 
 function Profil({ p, onZu }) {
   const c = useFarben();

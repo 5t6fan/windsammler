@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>Admin – Windsammler</title>
+<title>Admin – turbineSpotty</title>
 <meta name="theme-color" content="#0e6b58">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
@@ -16,6 +16,7 @@
   .meldung-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: var(--bg); }
   .meldung .ziel-aktionen .knopf { flex: 1 1 auto; min-height: 40px; font-size: 14px; }
   .knopf.gefahr { color: #c0392b; border-color: color-mix(in srgb, #c0392b 40%, var(--linie)); }
+  .meldung.erledigt { opacity: .6; }
   .tag.rot { background: color-mix(in srgb, #c0392b 18%, transparent); }
   .spieler li { cursor: default; }
   code.id { font-size: 12px; overflow-wrap: anywhere; }
@@ -36,11 +37,14 @@
     <div id="zahlen" class="zahlen admin"></div>
 
     <h3 class="abschnitt">Offene Meldungen <span id="offen-zahl"></span></h3>
-    <p class="leise klein">Ab 3 Meldungen ist ein Kommentar automatisch für alle außer dem Verfasser ausgeblendet.
+    <p class="leise klein">Ab 3 Meldungen ist ein Kommentar automatisch für alle außer dem Verfassy ausgeblendet.
       „Verwerfen“ löscht die Meldungen und macht ihn wieder sichtbar.</p>
     <div id="meldungen"></div>
 
-    <h3 class="abschnitt">Spieler</h3>
+    <h3 class="abschnitt">Feedback <span id="feedback-zahl"></span></h3>
+    <div id="feedback"></div>
+
+    <h3 class="abschnitt">Spielys</h3>
     <div class="zeile" style="margin-bottom:10px">
       <input id="suche" class="eingabe" placeholder="Name suchen" autocomplete="off">
       <button id="btn-suche" class="knopf">Suchen</button>
@@ -50,7 +54,7 @@
       Die Person kann danach ein neues Konto anlegen.</p>
   </div>
 
-  <p class="leise klein" style="margin-top:24px">Dein Spielerprofil (Konto-ID): <code id="meine-id" class="id">–</code></p>
+  <p class="leise klein" style="margin-top:24px">Dein Spielyprofil (Konto-ID): <code id="meine-id" class="id">–</code></p>
 </main>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>

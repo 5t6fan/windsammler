@@ -1,5 +1,5 @@
 'use strict';
-/* Windsammler – Windenergieanlagen in der Nähe finden und sammeln.
+/* turbineSpotty – Windenergieanlagen in der Nähe finden und sammeln.
  *
  * Test am Rechner (ohne GPS):  index.html?pos=51.2700,9.7394   feste Position
  *                              index.html?pos=…&test           Sammeln/Berühren ohne Entfernungsgrenze
@@ -15,7 +15,12 @@ const freiraum = (a) => (a.nabe && a.rotor ? a.nabe - a.rotor / 2 : null);
 const istKuhkratzer = (a) => { const f = freiraum(a); return f != null && f < KUHKRATZER; };
 const AKTIV_MIN = 10;     // ein Modell zählt als „aktiv“, wenn so viele Anlagen an Land in Betrieb sind
 const LISTE_MAX = 50;
-const SPEICHER = 'windsammler.v1';
+const SPEICHER = 'windsammler.v1';   // Schlüssel bleibt beim alten App-Namen, sonst wären die Sammelhefte weg
+// Sonderbauformen (Feld "bauform" in wind.json, aus dem MaStR-Feld "Technologie")
+const BAUFORM = {
+  1: { ico: '🌪️', name: 'Vertikalachser', text: 'der Rotor dreht sich um eine senkrechte Achse' },
+  2: { ico: '🪁', name: 'Flugwindanlage', text: 'ein Drachen oder Flügel am Seil erzeugt den Strom' },
+};
 
 const $ = (s) => document.querySelector(s);
 const fmt = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 });
@@ -32,7 +37,7 @@ const S = {
   sel: null, manuell: false, nah: [], naechste: null,
   heft: ladeHeft(),
   map: null, layer: null, fundLayer: null, ich: null, ersterFix: true, fundeAufKarte: false,
-  verlauf: { art: 'monat', wert: 'anlagen', sel: null }, fundFilter: 'alle',
+  verlauf: { art: 'monat', wert: 'anlagen', sel: null }, fundFilter: 'alle', listeFilter: 'alle',
 };
 
 /* ---------------- Daten ---------------- */
@@ -112,7 +117,7 @@ function aktualisiereHeft() {
     const i = S.idIndex.get(id);
     if (i == null) continue;
     const a = anlage(i);
-    const neu = { lat: a.lat, lon: a.lon, marke: a.marke, modell: a.modell, rotor: a.rotor };
+    const neu = { lat: a.lat, lon: a.lon, marke: a.marke, modell: a.modell, rotor: a.rotor, bauform: a.bauform };
     for (const [k, v] of Object.entries(neu)) {
       if (v != null && f[k] !== v) { f[k] = v; geaendert = true; }
     }
@@ -133,7 +138,7 @@ function heftAbgleichen(liste) {
       const a = i != null ? anlage(i) : x;   // abgebaut: Angaben vom Server
       f = S.heft.funde[x.anlage] = {
         t: Date.parse(x.zeit), marke: a.marke, modell: a.modell, typ: a.typ, kw: a.kw, nabe: a.nabe, rotor: a.rotor,
-        ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon,
+        ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon, bauform: a.bauform || null,
       };
       neu++;
     }
@@ -167,8 +172,12 @@ function anlage(i) {
     ibn: z[F.ibn], status: S.d.status[z[F.status]], planung: z[F.status] === S.planungIdx,
     ort: z[F.ort], kreis: z[F.kreis], land: z[F.land] != null ? S.d.bundesland[z[F.land]] : null,
     see: z[F.see] === 1, parkKey: z[F.park] ? parkKey(z) : null,
+    bauform: F.bauform != null ? z[F.bauform] || null : null,
   };
 }
+
+// Wie viele Anlagen dieses Modells gibt es in Deutschland (ohne geplante)?
+const modellZahl = (a) => (a.modell && S.modellAnzahl.get(a.markeIdx + '|' + a.modell)) || 0;
 
 const istAbgebaut = (id) => !!S.d && !S.idIndex.has(id);
 
@@ -347,11 +356,11 @@ async function zeigeEntdecker(id) {
   if (typeof Online === 'undefined' || !Online.angemeldet()) { el.hidden = true; return; }
   const e = await Online.entdecker(id);
   if (S.sel == null || anlage(S.sel).id !== id) return;  // inzwischen andere Anlage gewählt
-  const wer = (x) => (x.ich ? 'dir' : x.name || 'einem anderen Spieler') + ' am ' + datum(Date.parse(x.zeit));
+  const wer = (x) => (x.ich ? 'dir' : x.name || 'einem anderen Spiely') + ' am ' + datum(Date.parse(x.zeit));
   const zeilen = [];
   if (e && e.entdeckt) zeilen.push('🚩 Erstentdeckt von ' + wer(e.entdeckt));
   if (e && e.beruehrt) zeilen.push('🖐️ Zuerst berührt von ' + wer(e.beruehrt));
-  if (e && !e.entdeckt) zeilen.push('✨ Noch von niemandem entdeckt – sei die/der Erste!');
+  if (e && !e.entdeckt) zeilen.push('✨ Noch von niemandem entdeckt – sei das erste Entdecky!');
   el.hidden = !zeilen.length;
   el.innerHTML = zeilen.map(esc).join('<br>');
 }
@@ -428,10 +437,12 @@ function beschreibung(a) {
     else s.push('In Betrieb seit ' + jahr + (alter > 0 ? ' (' + alter + (alter === 1 ? ' Jahr' : ' Jahre') + ').' : '.'));
   }
   if (a.typ && a.modell && a.typ.toUpperCase() !== a.modell.toUpperCase()) s.push('Typ laut Register: ' + a.typ + '.');
-  const n = a.modell && S.modellAnzahl.get(a.markeIdx + '|' + a.modell);
-  if (n) {
+  if (BAUFORM[a.bauform]) s.push('Sonderbauform laut Register: ' + BAUFORM[a.bauform].name + ' – ' + BAUFORM[a.bauform].text + '.');
+  const n = modellZahl(a);
+  if (n === 1) s.push('Unikat: die einzige Anlage dieses Modells in Deutschland.');
+  else if (n) {
     s.push(n <= 20
-      ? 'Selten: nur ' + n + (n === 1 ? ' Anlage' : ' Anlagen') + ' dieses Modells in Deutschland.'
+      ? 'Selten: nur ' + n + ' Anlagen dieses Modells in Deutschland.'
       : 'Eine von ' + fmt0.format(n) + ' Anlagen dieses Modells in Deutschland.');
   }
   const q = QUARTETTE.filter((x) => a.marke && S.katalog.has(a.marke + '|' + a.modell) && x.test(S.katalog.get(a.marke + '|' + a.modell)));
@@ -446,34 +457,60 @@ function tags(a, fund) {
   if (a.planung) t.push('<span class="tag planung">in Planung</span>');
   else if (a.status !== 'In Betrieb') t.push('<span class="tag planung">' + esc(a.status) + '</span>');
   if (a.see) t.push('<span class="tag">offshore</span>');
-  const n = a.modell && S.modellAnzahl.get(a.markeIdx + '|' + a.modell);
-  if (n && n <= 20) t.push('<span class="tag selten">💎 selten</span>');
+  if (BAUFORM[a.bauform]) t.push('<span class="tag selten">' + BAUFORM[a.bauform].ico + ' ' + BAUFORM[a.bauform].name + '</span>');
+  const n = modellZahl(a);
+  if (n === 1) t.push('<span class="tag selten">🦄 Unikat</span>');
+  else if (n && n <= 20) t.push('<span class="tag selten">💎 selten</span>');
   if (a.ibn && a.ibn < '2000' && !a.planung) t.push('<span class="tag">🕰️ Oldtimer</span>');
   if (a.nabe >= 160) t.push('<span class="tag">🗼 Riese</span>');
   if (istKuhkratzer(a)) t.push('<span class="tag">🐄 Kuhkratzer</span>');
   return t.join('');
 }
 
+// Filter der Liste: alle, nur noch nicht gesammelte, nur gesammelte (berührte zählen als gesammelt)
+const LISTE_FILTER = {
+  alle: () => true,
+  offen: (i) => !S.heft.funde[S.d.anlagen[i][S.F.id]],
+  gesammelt: (i) => !!S.heft.funde[S.d.anlagen[i][S.F.id]],
+};
+
 function renderListe() {
   const ul = $('#liste');
-  $('#liste-titel').textContent = 'Im Umkreis von ' + entfernung(S.radius) + ' (' + fmt0.format(S.nah.length) + ')';
-  if (!S.nah.length) {
-    ul.innerHTML = '<li class="leer">Keine Anlage in diesem Umkreis – vergrößere den Radius.</li>';
+  const liste = S.nah.filter(({ i }) => LISTE_FILTER[S.listeFilter](i));
+  const gesammelt = S.nah.filter(({ i }) => LISTE_FILTER.gesammelt(i)).length;
+  const zahlen = { alle: S.nah.length, offen: S.nah.length - gesammelt, gesammelt };
+  document.querySelectorAll('#liste-filter button').forEach((b) => { b.querySelector('small').textContent = fmt0.format(zahlen[b.dataset.lf]); });
+  $('#liste-titel').textContent = 'Im Umkreis von ' + entfernung(S.radius) + ' (' +
+    (S.listeFilter === 'alle' ? fmt0.format(S.nah.length) : fmt0.format(liste.length) + ' von ' + fmt0.format(S.nah.length)) + ')';
+  if (!liste.length) {
+    ul.innerHTML = '<li class="leer">' + (!S.nah.length ? 'Keine Anlage in diesem Umkreis – vergrößere den Radius.'
+      : S.listeFilter === 'offen' ? 'Alle Anlagen in diesem Umkreis hast du schon gesammelt. 🎉'
+        : 'In diesem Umkreis hast du noch nichts gesammelt.') + '</li>';
     return;
   }
-  ul.innerHTML = S.nah.slice(0, LISTE_MAX).map(({ i, d }) => {
+  ul.innerHTML = liste.slice(0, LISTE_MAX).map(({ i, d }) => {
     const a = anlage(i);
     const b = peilung(S.pos.lat, S.pos.lon, a.lat, a.lon);
     const f = S.heft.funde[a.id];
     const haken = f ? (f.b ? ' ✓🤚' : ' ✓') : '';
-    return '<li data-i="' + i + '"' + (i === S.sel ? ' class="gewaehlt"' : '') + '>' +
+    // gesammelt: goldener Hintergrund (wie die Punkte auf der Karte), berührt: kräftiger
+    const klasse = [i === S.sel ? 'gewaehlt' : '', f ? (f.b ? 'hat beruehrt' : 'hat') : ''].filter(Boolean).join(' ');
+    return '<li data-i="' + i + '"' + (klasse ? ' class="' + klasse + '"' : '') + '>' +
       '<span class="li-pfeil">' + PFEILE[sektor(b)] + '</span>' +
       '<span class="li-text"><div class="li-titel">' + esc(titel(a)) + haken + '</div>' +
       '<div class="li-unter">' + esc([a.park || a.name, a.ort].filter(Boolean).join(' · ')) +
       (a.planung ? ' · geplant' : '') + '</div></span>' +
       '<span class="li-dist">' + entfernung(d) + '<small>' + KURZ[sektor(b)] + '</small></span></li>';
-  }).join('') + (S.nah.length > LISTE_MAX ? '<li class="leer">… und ' + fmt0.format(S.nah.length - LISTE_MAX) + ' weitere auf der Karte</li>' : '');
+  }).join('') + (liste.length > LISTE_MAX ? '<li class="leer">… und ' + fmt0.format(liste.length - LISTE_MAX) + ' weitere auf der Karte</li>' : '');
 }
+
+$('#liste-filter').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-lf]');
+  if (!b) return;
+  S.listeFilter = b.dataset.lf;
+  document.querySelectorAll('#liste-filter button').forEach((x) => x.classList.toggle('an', x === b));
+  if (S.pos) renderListe();
+});
 
 $('#liste').addEventListener('click', (e) => {
   const li = e.target.closest('li[data-i]');
@@ -498,15 +535,42 @@ $('#btn-naechste').addEventListener('click', () => {
 
 const FARBE = { gewaehlt: '#e0452b', gesammelt: '#c58b12', aktiv: '#0e6b58', planung: '#8a8f99', abgebaut: '#7b4fb0' };
 
+// Kartenhintergrund: OpenStreetMap oder Luftbild (Esri World Imagery – wird erst geladen, wenn man es wählt)
+const KARTENBILD = 'windsammler.kartenbild';
 function initKarte() {
   S.map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([51.2, 10.4], 6);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(S.map);
+  S.kacheln = {
+    karte: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }),
+    luftbild: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19, maxNativeZoom: 18,
+      attribution: 'Luftbild &copy; Esri, Maxar, Earthstar Geographics, GIS User Community',
+    }),
+  };
+  let art = 'karte';
+  try { if (localStorage.getItem(KARTENBILD) === 'luftbild') art = 'luftbild'; } catch (_) { /* Standard */ }
+  setzeHintergrund(art);
   S.fundLayer = L.layerGroup().addTo(S.map);
   S.layer = L.layerGroup().addTo(S.map);
 }
+
+function setzeHintergrund(art) {
+  S.hintergrund = art;
+  const weg = S.kacheln[art === 'luftbild' ? 'karte' : 'luftbild'];
+  if (S.map.hasLayer(weg)) S.map.removeLayer(weg);
+  S.kacheln[art].addTo(S.map).bringToBack();
+  const knopf = $('#btn-luftbild');
+  const an = art === 'luftbild';
+  knopf.classList.toggle('an', an);
+  knopf.setAttribute('aria-pressed', an);
+  knopf.textContent = an ? '🗺️' : '🛰️';
+  knopf.setAttribute('aria-label', an ? 'Kartenansicht' : 'Luftbild');
+  knopf.title = an ? 'Karte' : 'Luftbild';
+  try { localStorage.setItem(KARTENBILD, art); } catch (_) { /* nur für diese Sitzung */ }
+}
+$('#btn-luftbild').addEventListener('click', () => { if (S.map) setzeHintergrund(S.hintergrund === 'luftbild' ? 'karte' : 'luftbild'); });
 
 function farbe(a, gewaehlt) {
   if (gewaehlt) return FARBE.gewaehlt;
@@ -681,7 +745,7 @@ async function sammle(beruehrt) {
   // Kopie der wichtigsten Angaben, damit das Heft auch nach Daten-Updates (und Abbau) vollständig bleibt
   S.heft.funde[a.id] = alt || {
     t: jetzt, marke: a.marke, modell: a.modell, typ: a.typ, kw: a.kw, nabe: a.nabe, rotor: a.rotor,
-    ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon,
+    ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon, bauform: a.bauform,
   };
   if (beruehrt) S.heft.funde[a.id].b = jetzt;
   const neu = pruefeAbzeichen();
@@ -707,7 +771,7 @@ async function sammle(beruehrt) {
       renderHeft();
       if (extra.length) meldung += ' · ' + extra.map((x) => x.ico + ' ' + x.name).join(' · ');
     }
-    if (r && r.punkte) meldung = '+' + r.punkte + ' Punkte · ' + meldung + (r.erstentdecker ? ' · 🚩 Erstentdecker!' : '') + (r.erstberuehrt ? ' · 🖐️ Erste/r am Turm!' : '');
+    if (r && r.punkte) meldung = '+' + r.punkte + ' Punkte · ' + meldung + (r.erstentdecker ? ' · 🚩 Erstentdecky!' : '') + (r.erstberuehrt ? ' · 🖐️ Als Erstes am Turm!' : '');
     else if (r && r.wartend) meldung += ' · wird übertragen, sobald Netz da ist';
     else if (r && r.fehler) meldung += ' · nicht gewertet: ' + r.fehler;
     renderZiel();
@@ -744,16 +808,15 @@ function statistik() {
     const gesamt = S.parkAnzahl.get(p) || 0;
     if (gesamt >= 3 && n >= gesamt) parksKomplett.push(p.split('|')[0]);
   }
-  const istSelten = (f) => {
-    if (!f.modell || !S.d) return false;
-    const n = S.modellAnzahl.get(S.d.hersteller.indexOf(f.marke) + '|' + f.modell);
-    return n && n <= 20;
-  };
+  const anzahl = (f) => (f.modell && S.d ? S.modellAnzahl.get(S.d.hersteller.indexOf(f.marke) + '|' + f.modell) || 0 : 0);
+  const istSelten = (f) => { const n = anzahl(f); return n > 0 && n <= 20; };
   const laender = new Map();
   funde.forEach((f) => { if (f.land) laender.set(f.land, (laender.get(f.land) || 0) + 1); });
   return {
     funde, marken, modelle, kw, parksKomplett, laender,
     selten: funde.filter(istSelten),
+    unikate: funde.filter((f) => anzahl(f) === 1),
+    bauform: funde.filter((f) => BAUFORM[f.bauform]),
     beruehrt: funde.filter((f) => f.b),
     abgebaut: funde.filter((f) => istAbgebaut(f.id)),
   };
@@ -812,25 +875,27 @@ function quartettStand(q, s) {
 const ABZEICHEN = [
   { k: 'erster', ico: '🌱', name: 'Erster Fund', text: 'Die erste Anlage', test: (s) => s.funde.length >= 1, belege: (s) => s.funde.slice(0, 1).map(fundZeile) },
   { k: 'a10', ico: '🎯', name: 'Zehnerpack', text: '10 Anlagen', test: (s) => s.funde.length >= 10, belege: (s) => [fundZeile(s.funde[9]) + ' (Nr. 10)'] },
-  { k: 'a50', ico: '🏅', name: 'Windjäger', text: '50 Anlagen', test: (s) => s.funde.length >= 50, belege: (s) => [fundZeile(s.funde[49]) + ' (Nr. 50)'] },
+  { k: 'a50', ico: '🏅', name: 'Windjägy', text: '50 Anlagen', test: (s) => s.funde.length >= 50, belege: (s) => [fundZeile(s.funde[49]) + ' (Nr. 50)'] },
   { k: 'a100', ico: '🏆', name: 'Hundertschaft', text: '100 Anlagen', test: (s) => s.funde.length >= 100, belege: (s) => [fundZeile(s.funde[99]) + ' (Nr. 100)'] },
-  { k: 'm3', ico: '🏷️', name: 'Markenkenner', text: '3 Hersteller', test: (s) => s.marken.size >= 3, belege: markenBelege },
-  { k: 'm6', ico: '🎖️', name: 'Markenprofi', text: '6 Hersteller', test: (s) => s.marken.size >= 6, belege: markenBelege },
-  { k: 't10', ico: '🧩', name: 'Typensammler', text: '10 Modelle', test: (s) => s.modelle.size >= 10, belege: modellBelege },
+  { k: 'm3', ico: '🏷️', name: 'Markenkenny', text: '3 Hersteller', test: (s) => s.marken.size >= 3, belege: markenBelege },
+  { k: 'm6', ico: '🎖️', name: 'Markenprofy', text: '6 Hersteller', test: (s) => s.marken.size >= 6, belege: markenBelege },
+  { k: 't10', ico: '🧩', name: 'Typensammly', text: '10 Modelle', test: (s) => s.modelle.size >= 10, belege: modellBelege },
   { k: 't25', ico: '📚', name: 'Typenlexikon', text: '25 Modelle', test: (s) => s.modelle.size >= 25, belege: modellBelege },
   { k: 'alt', ico: '🕰️', name: 'Oldtimer', text: 'Baujahr vor 2000', fund: (f) => f.ibn && f.ibn < '2000' },
   { k: 'riese', ico: '🗼', name: 'Riese', text: 'Nabe ab 160 m', fund: (f) => f.nabe >= 160 },
   { k: 'zwerg', ico: '🐭', name: 'Winzling', text: 'Nabe unter 50 m', fund: (f) => f.nabe && f.nabe < 50 },
   { k: 'kuh', ico: '🐄', name: 'Kuhkratzer', text: 'Blattspitze unter ' + KUHKRATZER + ' m über dem Boden', fund: istKuhkratzer },
   { k: 'selten', ico: '💎', name: 'Rarität', text: 'Modell mit ≤ 20 Anlagen', test: (s) => s.selten.length > 0, belege: (s) => s.selten.map(fundZeile) },
+  { k: 'unikat', ico: '🦄', name: 'Unikat', text: 'Modell, das es in Deutschland nur einmal gibt', test: (s) => s.unikate.length > 0, belege: (s) => s.unikate.map(fundZeile) },
+  { k: 'vertikal', ico: '🌪️', name: 'Senkrechtstarty', text: 'Sonderbauform, z. B. Vertikalachser', test: (s) => s.bauform.length > 0, belege: (s) => s.bauform.map((f) => fundZeile(f) + ' · ' + BAUFORM[f.bauform].name) },
   { k: 'park', ico: '🌬️', name: 'Park komplett', text: 'Alle Anlagen eines Windparks', test: (s) => s.parksKomplett.length > 0, belege: (s) => s.parksKomplett },
   { k: 'mw100', ico: '⚡', name: '100 Megawatt', text: 'Gesammelte Leistung', test: (s) => s.kw >= 100000, belege: (s) => [fmt.format(s.kw / 1000) + ' MW aus ' + s.funde.length + ' Anlagen'] },
-  { k: 'land3', ico: '🗺️', name: 'Grenzgänger', text: '3 Bundesländer', test: (s) => s.laender.size >= 3, belege: (s) => [...s.laender].map(([l, n]) => l + ' · ' + n + ' Anlagen') },
+  { k: 'land3', ico: '🗺️', name: 'Grenzgängy', text: '3 Bundesländer', test: (s) => s.laender.size >= 3, belege: (s) => [...s.laender].map(([l, n]) => l + ' · ' + n + ' Anlagen') },
   { k: 'b1', ico: '🤚', name: 'Handauflegen', text: 'Einen Turm berührt', test: (s) => s.beruehrt.length >= 1, belege: (s) => s.beruehrt.map(fundZeile) },
-  { k: 'b10', ico: '🙌', name: 'Turmstreichler', text: '10 Türme berührt', test: (s) => s.beruehrt.length >= 10, belege: (s) => s.beruehrt.map(fundZeile) },
-  { k: 'pionier', ico: '🚩', name: 'Pionier', text: 'Als Erste/r überhaupt entdeckt', fund: (f) => f.erst },
-  { k: 'erstkontakt', ico: '🖐️', name: 'Erstkontakt', text: 'Als Erste/r einen Turm berührt', fund: (f) => f.erstB },
-  { k: 'zeitzeuge', ico: '🪦', name: 'Zeitzeuge', text: 'Gesammelte Anlage wurde abgebaut', test: (s) => s.abgebaut.length > 0, belege: (s) => s.abgebaut.map(abgebautZeile) },
+  { k: 'b10', ico: '🙌', name: 'Turmstreichly', text: '10 Türme berührt', test: (s) => s.beruehrt.length >= 10, belege: (s) => s.beruehrt.map(fundZeile) },
+  { k: 'pionier', ico: '🚩', name: 'Pioniery', text: 'Als Erstes überhaupt entdeckt', fund: (f) => f.erst },
+  { k: 'erstkontakt', ico: '🖐️', name: 'Erstkontakt', text: 'Als Erstes einen Turm berührt', fund: (f) => f.erstB },
+  { k: 'zeitzeuge', ico: '🪦', name: 'Zeitzeugy', text: 'Gesammelte Anlage wurde abgebaut', test: (s) => s.abgebaut.length > 0, belege: (s) => s.abgebaut.map(abgebautZeile) },
 ];
 ABZEICHEN.forEach((a) => {
   if (!a.fund) return;
@@ -1000,9 +1065,9 @@ $('#heft-abzeichen').addEventListener('click', (e) => {
       belege.slice(0, max).map((x) => '<li>' + esc(x) + '</li>').join('') +
       (belege.length > max ? '<li class="leise">… und ' + (belege.length - max) + ' weitere</li>' : '') + '</ul>' : ''));
   if (hat) {
-    $('#btn-abz-teilen').addEventListener('click', () => teile(a.ico + ' Abzeichen „' + a.name + '“ im Windsammler erhalten: ' + a.text + ' (' + datum(hat) + ')\n' +
+    $('#btn-abz-teilen').addEventListener('click', () => teile(a.ico + ' Abzeichen „' + a.name + '“ bei turbineSpotty erhalten: ' + a.text + ' (' + datum(hat) + ')\n' +
       'Bisher ' + Object.keys(S.heft.abzeichen).length + ' Abzeichen und ' + s.funde.length + (s.funde.length === 1 ? ' Anlage' : ' Anlagen') +
-      ' gesammelt. Sammel mit: ' + APP_URL));
+      ' gesammelt. Spotte mit: ' + APP_URL));
   }
 });
 
@@ -1080,10 +1145,10 @@ $('#verlauf-balken').addEventListener('click', (e) => {
 
 /* Funde als Liste */
 function renderFunde(s) {
-  const filter = { alle: () => true, beruehrt: (f) => f.b, abgebaut: (f) => istAbgebaut(f.id) }[S.fundFilter];
+  const filter = { alle: () => true, beruehrt: (f) => f.b, abgebaut: (f) => istAbgebaut(f.id), bauform: (f) => BAUFORM[f.bauform] }[S.fundFilter];
   const funde = s.funde.filter(filter).sort((a, b) => b.t - a.t);
   document.querySelectorAll('#funde-filter button').forEach((b) => {
-    const n = { alle: s.funde.length, beruehrt: s.beruehrt.length, abgebaut: s.abgebaut.length }[b.dataset.f];
+    const n = { alle: s.funde.length, beruehrt: s.beruehrt.length, abgebaut: s.abgebaut.length, bauform: s.bauform.length }[b.dataset.f];
     b.querySelector('small').textContent = n;
     b.hidden = b.dataset.f !== 'alle' && !n;
   });
@@ -1092,7 +1157,8 @@ function renderFunde(s) {
       const weg = istAbgebaut(f.id);
       return '<li data-id="' + esc(f.id) + '"' + (weg ? ' class="abgebaut"' : '') + '><span class="li-pfeil">' + (weg ? '🪦' : f.b ? '🤚' : '★') + '</span>' +
         '<span class="li-text"><div class="li-titel">' + esc(fundTitel(f)) + '</div><div class="li-unter">' +
-        esc([weg ? 'abgebaut' + (S.abgebaut[f.id] ? ' ' + datum(S.abgebaut[f.id]) : '') : null, f.erst ? '🚩 Erstentdeckung' : null,
+        esc([weg ? 'abgebaut' + (S.abgebaut[f.id] ? ' ' + datum(S.abgebaut[f.id]) : '') : null,
+          BAUFORM[f.bauform] ? BAUFORM[f.bauform].ico + ' ' + BAUFORM[f.bauform].name : null, f.erst ? '🚩 Erstentdeckung' : null,
           f.erstB ? '🖐️ zuerst berührt' : null, f.ort, f.kreis].filter(Boolean).join(' · ')) +
         '</div></span><span class="li-dist">' + datum(f.t) + '</span>' +
         '<button class="li-teilen" data-teilen="' + esc(f.id) + '" aria-label="' + esc(fundTitel(f) + ' teilen') + '">📤</button></li>';
@@ -1141,18 +1207,18 @@ $('#heft-funde').addEventListener('click', (e) => {
 const APP_URL = location.origin + location.pathname;
 
 function teilText(f) {
-  const zeilen = ['🌬️ Gesammelt im Windsammler: ' + fundTitel(f) + (f.ort ? ' in ' + f.ort : '') + ' (' + datum(f.t) + ')'];
+  const zeilen = ['🌬️ Gespottet mit turbineSpotty: ' + fundTitel(f) + (f.ort ? ' in ' + f.ort : '') + ' (' + datum(f.t) + ')'];
   const werte = [];
   if (f.kw) werte.push(fmt.format(f.kw / 1000) + ' MW');
   if (f.nabe) werte.push('Nabe ' + fmt0.format(f.nabe) + ' m');
   if (f.rotor) werte.push('Rotor ' + fmt0.format(f.rotor) + ' m');
   if (f.ibn) werte.push('seit ' + f.ibn.slice(0, 4));
   if (werte.length) zeilen.push(werte.join(' · '));
-  if (f.erst) zeilen.push('🚩 Als Erste/r überhaupt entdeckt!');
-  if (f.erstB) zeilen.push('🖐️ Als Erste/r den Turm berührt!');
+  if (f.erst) zeilen.push('🚩 Als Erstes überhaupt entdeckt!');
+  if (f.erstB) zeilen.push('🖐️ Als Erstes den Turm berührt!');
   else if (f.b) zeilen.push('🤚 Turm berührt');
   const n = Object.keys(S.heft.funde).length;
-  zeilen.push('Mein Sammelheft: ' + n + (n === 1 ? ' Anlage' : ' Anlagen') + '. Sammel mit: ' + APP_URL);
+  zeilen.push('Mein Sammelheft: ' + n + (n === 1 ? ' Anlage' : ' Anlagen') + '. Spotte mit: ' + APP_URL);
   return zeilen.join('\n');
 }
 
@@ -1234,7 +1300,7 @@ function zeigeSicherheit(weiter) {
   zeigeSheet('⚠️ Sicherheit geht vor',
     '<p>Windparks sind Betriebsgelände und liegen meist auf Privatgrund.</p>' +
     '<ul class="sicherheit-liste">' +
-    '<li>Betritt nur frei zugängliche Wege und Flächen. Beachte Absperrungen, Schilder und Anweisungen von Betreibern, Landwirten und Jägern.</li>' +
+    '<li>Betritt nur frei zugängliche Wege und Flächen. Beachte Absperrungen, Schilder und Anweisungen von Betreibys, Landwirtys und Jägys.</li>' +
     '<li>Halte großen Abstand bei Frost (Eiswurf von den Rotorblättern), Gewitter, Sturm sowie bei Bau- und Wartungsarbeiten.</li>' +
     '<li>Klettere nicht auf Anlagen, Zäune oder Bauteile. „Turm berühren“ nur, wo der Turm frei und gefahrlos erreichbar ist.</li>' +
     '<li>Bediene die App nicht beim Fahren und achte auf den Verkehr.</li>' +
@@ -1271,7 +1337,7 @@ $('#btn-export').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(S.heft, null, 1)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'windsammler-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.download = 'turbinespotty-' + new Date().toISOString().slice(0, 10) + '.json';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
@@ -1291,7 +1357,7 @@ $('#inp-import').addEventListener('change', async (e) => {
     renderHeft();
     toast(Object.keys(h.funde).length + ' Funde importiert');
   } catch (_) {
-    toast('Datei ist kein Windsammler-Export');
+    toast('Datei ist kein turbineSpotty-Export');
   }
   e.target.value = '';
 });

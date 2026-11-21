@@ -9,7 +9,7 @@ import { useFarben } from '../../farben';
 import { fmt, fmt0, datum } from '../../lib/format';
 import {
   statistik, herstellerFortschritt, QUARTETTE, quartettStand, ABZEICHEN, dynamischeAbzeichen,
-  perioden, fundTitel, istAbgebaut, teilText, abzeichenText, SAMMEL_RADIUS,
+  perioden, fundTitel, istAbgebaut, teilText, abzeichenText, SAMMEL_RADIUS, BAUFORM,
 } from '../../lib/spiel';
 import { WEB } from '../../config';
 import { Karte, Knopf, Chips, Abschnitt, Leise, Etikett, Fortschritt, Blatt } from '../../ui';
@@ -308,11 +308,12 @@ function Funde({ s }) {
   const { D, waehle } = useWind();
   const router = useRouter();
   const [filter, setFilter] = useState('alle');
-  const test = { alle: () => true, beruehrt: (f) => f.b, abgebaut: (f) => istAbgebaut(D, f.id) }[filter];
+  const test = { alle: () => true, beruehrt: (f) => f.b, abgebaut: (f) => istAbgebaut(D, f.id), bauform: (f) => BAUFORM[f.bauform] }[filter];
   const liste = s.funde.filter(test).sort((a, b) => b.t - a.t);
   const werte = [['alle', 'Alle ' + s.funde.length]];
   if (s.beruehrt.length) werte.push(['beruehrt', '🤚 Berührt ' + s.beruehrt.length]);
   if (s.abgebaut.length) werte.push(['abgebaut', '🪦 Abgebaut ' + s.abgebaut.length]);
+  if (s.bauform.length) werte.push(['bauform', '🌪️ Sonderbauform ' + s.bauform.length]);
   return (
     <View>
       <View style={{ marginBottom: 8 }}><Chips werte={werte} wert={filter} onWahl={setFilter} /></View>
@@ -332,6 +333,7 @@ function Funde({ s }) {
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '600', color: c.text, fontSize: 16 }} numberOfLines={1}>{fundTitel(f)}</Text>
                 <Leise klein>{[weg ? 'abgebaut' + (D.abgebaut[f.id] ? ' ' + datum(D.abgebaut[f.id]) : '') : null,
+                  BAUFORM[f.bauform] ? BAUFORM[f.bauform].ico + ' ' + BAUFORM[f.bauform].name : null,
                   f.erst ? '🚩 Erstentdeckung' : null, f.erstB ? '🖐️ zuerst berührt' : null, f.ort, f.kreis].filter(Boolean).join(' · ')}</Leise>
               </View>
               <Text style={{ fontWeight: '700', color: c.text, fontVariant: ['tabular-nums'] }}>{datum(f.t)}</Text>
@@ -353,7 +355,7 @@ function Sicherung() {
   const w = useWind();
   const exportiere = async () => {
     try {
-      const f = new File(Paths.cache, 'windsammler-' + new Date().toISOString().slice(0, 10) + '.json');
+      const f = new File(Paths.cache, 'turbinespotty-' + new Date().toISOString().slice(0, 10) + '.json');
       if (f.exists) f.delete();
       f.create();
       await f.write(JSON.stringify(w.heft, null, 1));
@@ -369,7 +371,7 @@ function Sicherung() {
       const n = w.importiere(JSON.parse(await new File(r.assets[0].uri).text()));
       w.zeige(n + ' Funde importiert');
     } catch (_) {
-      w.zeige('Datei ist kein Windsammler-Export');
+      w.zeige('Datei ist kein turbineSpotty-Export');
     }
   };
   return (

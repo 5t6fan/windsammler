@@ -42,7 +42,7 @@ function Meldung() {
 
 // Sicherheitshinweis: vor dem ersten Start der Standortsuche bestätigen, danach jederzeit wieder aufrufbar
 const PUNKTE = [
-  'Betritt nur frei zugängliche Wege und Flächen. Beachte Absperrungen, Schilder und Anweisungen von Betreibern, Landwirten und Jägern.',
+  'Betritt nur frei zugängliche Wege und Flächen. Beachte Absperrungen, Schilder und Anweisungen von Betreibys, Landwirtys und Jägys.',
   'Halte großen Abstand bei Frost (Eiswurf von den Rotorblättern), Gewitter, Sturm sowie bei Bau- und Wartungsarbeiten.',
   'Klettere nicht auf Anlagen, Zäune oder Bauteile. „Turm berühren“ nur, wo der Turm frei und gefahrlos erreichbar ist.',
   'Bediene die App nicht beim Fahren und achte auf den Verkehr.',

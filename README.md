@@ -1,4 +1,4 @@
-# Windsammler
+# turbineSpotty (früher Windsammler)
 
 Web-App (PWA) fürs iPhone: Windenergieanlagen in der Nähe finden und in einem Sammelheft sammeln.
 Daten: Marktstammdatenregister (Bundesnetzagentur), Datenlizenz Deutschland – Namensnennung – 2.0.

@@ -1,5 +1,5 @@
 'use strict';
-/* Online-Teil: Spielerprofil, Gruppen mit Einladungscode, Ranglisten (Gruppe/global, Monat/Jahr/Gesamt),
+/* Online-Teil: Spielyprofil, Gruppen mit Einladungscode, Ranglisten (Gruppe/global, Monat/Jahr/Gesamt),
  * Bewertungen zu Anlagen (Supabase).
  * Ohne Eintrag in config.js bleibt die App rein lokal und der Rangliste-Tab ist ausgeblendet.
  * Nutzt Hilfsfunktionen aus app.js ($, esc, toast, fmt0, datum).
@@ -37,7 +37,7 @@ const Online = (() => {
 
   function fehlertext(e) {
     if (netzfehler(e)) return 'Keine Verbindung';
-    if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielername ist schon vergeben. Dein altes Konto? Dann „Mit Passwort anmelden“.';
+    if (e && e.code === '23505' && /profile_name/.test(e.message || '')) return 'Dieser Spielyname ist schon vergeben. Dein altes Konto? Dann „Mit Passwort anmelden“.';
     return (e && e.message) || 'Unbekannter Fehler';
   }
 
@@ -177,10 +177,10 @@ const Online = (() => {
     $('#inp-passwort').hidden = !an;
     $('#inp-name').setAttribute('autocomplete', an ? 'username' : 'nickname');
     $('#btn-anmelden').textContent = an ? 'Anmelden' : 'Los geht’s';
-    $('#btn-modus').textContent = an ? 'Neu hier? Spielerkonto anlegen' : 'Schon ein Konto? Mit Passwort anmelden';
+    $('#btn-modus').textContent = an ? 'Neu hier? Spielykonto anlegen' : 'Schon ein Konto? Mit Passwort anmelden';
     $('#anmelden-text').textContent = an
-      ? 'Melde dich mit Spielername und dem Passwort an, das du in deinem Konto festgelegt hast. Punkte, Gruppen und Bewertungen kommen mit.'
-      : 'Wähle einen Spielernamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.';
+      ? 'Melde dich mit Spielyname und dem Passwort an, das du in deinem Konto festgelegt hast. Punkte, Gruppen und Bewertungen kommen mit.'
+      : 'Wähle einen Spielynamen. Deine Gruppe sieht nur diesen Namen und deine Punkte – nie, wo du warst.';
     $('#anmelden-fuss').hidden = an;
   }
 
@@ -206,12 +206,12 @@ const Online = (() => {
     box.classList.toggle('offen', !hatPasswort);
     $('#sichern-titel').textContent = hatPasswort ? 'Passwort ändern' : '⚠️ Konto sichern';
     $('#sichern-text').textContent = hatPasswort
-      ? 'Dein Konto ist mit einem Passwort gesichert. Auf einem anderen Gerät oder nach gelöschtem Browserspeicher: „Mit Passwort anmelden“ mit deinem Spielernamen.'
-      : 'Dein Konto hängt nur an diesem Browser. Lege ein Passwort fest, damit du dich nach gelöschtem Browserspeicher oder auf einem anderen Gerät mit Spielername und Passwort wieder anmelden kannst.';
+      ? 'Dein Konto ist mit einem Passwort gesichert. Auf einem anderen Gerät oder nach gelöschtem Browserspeicher: „Mit Passwort anmelden“ mit deinem Spielynamen.'
+      : 'Dein Konto hängt nur an diesem Browser. Lege ein Passwort fest, damit du dich nach gelöschtem Browserspeicher oder auf einem anderen Gerät mit Spielyname und Passwort wieder anmelden kannst.';
   }
 
   async function umbenennen() {
-    const name = (prompt('Neuer Spielername', profil.name) || '').trim();
+    const name = (prompt('Neuer Spielyname', profil.name) || '').trim();
     if (!name || name === profil.name) return;
     const { error } = await sb.from('profile').update({ name }).eq('id', profil.id);
     if (error) return toast('Ändern fehlgeschlagen: ' + fehlertext(error));
@@ -472,7 +472,7 @@ const Online = (() => {
     ladeRangliste();
   }
 
-  /* ---------- Spielerprofil (aus der Rangliste antippen) ----------
+  /* ---------- Spielyprofil (aus der Rangliste antippen) ----------
    * Zeigt Zahlen, Abzeichen, Hersteller und Raritäten – keine Orte und keine Funddaten. */
 
   async function profilZeigen(name) {
@@ -526,8 +526,8 @@ const Online = (() => {
   }
 
   /* ---------- Bewertungen ----------
-   * Lesen: alle angemeldeten Spieler. Schreiben: nur wer die Anlage mit seinem Konto gesammelt hat
-   * (prüft der Server). Eine Bewertung pro Spieler und Anlage, ab 3 Meldungen ausgeblendet. */
+   * Lesen: alle angemeldeten Spielys. Schreiben: nur wer die Anlage mit seinem Konto gesammelt hat
+   * (prüft der Server). Eine Bewertung pro Spiely und Anlage, ab 3 Meldungen ausgeblendet. */
 
   let km = { id: null, gesammelt: false, zeilen: [], sterne: 0 };
 
@@ -590,7 +590,7 @@ const Online = (() => {
         '<div class="ziel-aktionen"><button class="knopf haupt" data-aktion="speichern">' + (eigene ? 'Ändern' : 'Bewerten') + '</button>' +
         (eigene ? '<button class="knopf" data-aktion="loeschen">Löschen</button>' : '') + '</div></div>'
       : '<p class="leise klein">Bewerten kannst du, sobald du die Anlage gesammelt hast.</p>';
-    $('#km-inhalt').innerHTML = (liste || '<p class="leise klein">Noch keine Bewertungen – sei die/der Erste.</p>') + formular;
+    $('#km-inhalt').innerHTML = (liste || '<p class="leise klein">Noch keine Bewertungen – bewerte als Erstes.</p>') + formular;
   }
 
   async function kommentarKlick(e) {
@@ -641,6 +641,23 @@ const Online = (() => {
     ladeKommentare(id, true);
   }
 
+  /* ---------- Feedback an das Team (landet auf der Admin-Seite, Mail-Hinweis an das Betreiby) ---------- */
+
+  async function feedbackSenden() {
+    const inp = $('#inp-feedback');
+    const text = inp.value.trim();
+    if (text.length < 3) return toast('Bitte schreib ein paar Worte');
+    $('#btn-feedback').disabled = true;
+    try {
+      await rpc('feedback_senden', { p_text: text });
+      inp.value = '';
+      toast('Danke! Dein Feedback ist angekommen.');
+    } catch (e) {
+      toast('Senden fehlgeschlagen: ' + fehlertext(e));
+    }
+    $('#btn-feedback').disabled = false;
+  }
+
   /* ---------- Ereignisse ---------- */
 
   if (aktiv) {
@@ -689,6 +706,7 @@ const Online = (() => {
       if (li && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); profilZeigen(li.dataset.name); }
     });
     $('#km-inhalt').addEventListener('click', kommentarKlick);
+    $('#btn-feedback').addEventListener('click', feedbackSenden);
     $('#rang-blockiert').addEventListener('click', async (e) => {
       const b = e.target.closest('button[data-entblocken]');
       if (!b) return;

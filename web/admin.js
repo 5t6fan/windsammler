@@ -1,5 +1,5 @@
 'use strict';
-/* Admin-Seite: Überblick, gemeldete Kommentare prüfen, Spieler löschen.
+/* Admin-Seite: Überblick, gemeldete Kommentare prüfen, Feedback lesen, Spielys löschen.
  * Nutzt die Anmeldung der Web-App in diesem Browser. Freigeschaltet sind nur Konten in public.admins –
  * die Prüfung macht der Server (Funktionen admin_* in supabase/schema.sql), diese Seite zeigt nur an. */
 (() => {
@@ -30,9 +30,9 @@
     const s = data.session;
     if (!s) {
       return status('Du bist in diesem Browser nicht angemeldet. Öffne zuerst die <a href="./#rang">Web-App</a>, melde dich im Tab ' +
-        'Rangliste mit einem Spielernamen an und komm dann hierher zurück.');
+        'Rangliste mit einem Spielynamen an und komm dann hierher zurück.');
     }
-    // Der Server prüft das Spielerprofil (public.ich()), nicht die Browser-Sitzung –
+    // Der Server prüft das Spielyprofil (public.ich()), nicht die Browser-Sitzung –
     // bei per Passwort verknüpften Geräten sind das verschiedene IDs.
     let profilId = s.user.id;
     try { profilId = (await rpc('ich')) || s.user.id; } catch (_) { /* Funktion fehlt oder offline */ }
@@ -48,15 +48,16 @@
     ladeAlles();
   }
 
-  function ladeAlles() { ladeUebersicht(); ladeMeldungen(); ladeSpieler(); }
+  function ladeAlles() { ladeUebersicht(); ladeMeldungen(); ladeFeedback(); ladeSpieler(); }
 
   async function ladeUebersicht() {
     try {
       const u = await rpc('admin_uebersicht');
       $('#zahlen').innerHTML = [
-        [u.spieler, 'Spieler'], [u.neu7, 'neu (7 Tage)'], [u.aktiv7, 'aktiv (7 Tage)'], [u.aktiv30, 'aktiv (30 Tage)'],
+        [u.spieler, 'Spielys'], [u.neu7, 'neu (7 Tage)'], [u.aktiv7, 'aktiv (7 Tage)'], [u.aktiv30, 'aktiv (30 Tage)'],
         [u.global, 'global sichtbar'], [u.funde, 'Funde'], [u.funde7, 'Funde (7 Tage)'], [u.beruehrt, 'berührt'],
         [u.kommentare, 'Bewertungen'], [u.gruppen, 'Gruppen'], [u.offen, 'offene Meldungen'], [u.ausgeblendet, 'ausgeblendet'],
+        [u.feedback_offen, 'offenes Feedback'],
       ].map(([z, t]) => '<div class="zahl"><b>' + fmt0.format(z || 0) + '</b><span>' + t + '</span></div>').join('');
       if (u.aelteste_meldung) {
         const stunden = (Date.now() - Date.parse(u.aelteste_meldung)) / 36e5;
@@ -80,10 +81,28 @@
         '<div class="ziel-aktionen">' +
           '<button class="knopf" data-verwerfen="' + esc(m.id) + '">Verwerfen</button>' +
           '<button class="knopf gefahr" data-kommentar="' + esc(m.id) + '">Kommentar löschen</button>' +
-          '<button class="knopf gefahr" data-spieler="' + esc(m.verfasser) + '" data-name="' + esc(m.name) + '">Spieler löschen</button>' +
+          '<button class="knopf gefahr" data-spieler="' + esc(m.verfasser) + '" data-name="' + esc(m.name) + '">Spiely löschen</button>' +
         '</div></div>').join('')
         : '<div class="karte leise">Keine offenen Meldungen. 🎉</div>';
     } catch (e) { box.innerHTML = '<div class="karte leise">Meldungen nicht ladbar: ' + esc(e.message) + '</div>'; }
+  }
+
+  async function ladeFeedback() {
+    const box = $('#feedback');
+    try {
+      const liste = await rpc('admin_feedback') || [];
+      const offen = liste.filter((f) => !f.erledigt).length;
+      $('#feedback-zahl').textContent = offen ? '· ' + offen + ' offen' : '';
+      box.innerHTML = liste.length ? liste.map((f) =>
+        '<div class="karte meldung' + (f.erledigt ? ' erledigt' : '') + '"><div class="meldung-kopf"><b>' + esc(f.name || '(Konto gelöscht)') + '</b>' +
+        '<span class="leise klein">' + zeit(f.zeit) + '</span></div>' +
+        '<div class="meldung-text">' + esc(f.text) + '</div>' +
+        '<div class="ziel-aktionen">' + (f.erledigt
+          ? '<span class="leise klein">erledigt ' + zeit(f.erledigt) + '</span>'
+          : '<button class="knopf" data-feedback="' + esc(f.id) + '">Erledigt</button>') +
+        '</div></div>').join('')
+        : '<div class="karte leise">Noch kein Feedback.</div>';
+    } catch (e) { box.innerHTML = '<div class="karte leise">Feedback nicht ladbar: ' + esc(e.message) + '</div>'; }
   }
 
   async function ladeSpieler() {
@@ -97,8 +116,8 @@
           ' · ' + fmt0.format(p.kommentare) + ' Bewertungen' + (p.gemeldet ? ' · ' + p.gemeldet + '× gemeldet' : '') + '</div></span>' +
         (p.admin ? '' : '<button class="knopf klein-knopf gefahr" data-spieler="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Löschen</button>') +
         '</li>').join('')
-        : '<li class="leer">Keine Spieler gefunden.</li>';
-    } catch (e) { ul.innerHTML = '<li class="leer">Spieler nicht ladbar: ' + esc(e.message) + '</li>'; }
+        : '<li class="leer">Keine Spielys gefunden.</li>';
+    } catch (e) { ul.innerHTML = '<li class="leer">Spielys nicht ladbar: ' + esc(e.message) + '</li>'; }
   }
 
   async function aktion(fn, erfolg) {
@@ -113,10 +132,12 @@
       aktion(() => rpc('admin_meldung_verwerfen', { p_kommentar: b.dataset.verwerfen }), 'Meldungen verworfen – Kommentar wieder sichtbar');
     } else if (b.dataset.kommentar) {
       if (confirm('Diesen Kommentar endgültig löschen?')) aktion(() => rpc('admin_kommentar_loeschen', { p_kommentar: b.dataset.kommentar }), 'Kommentar gelöscht');
+    } else if (b.dataset.feedback) {
+      aktion(() => rpc('admin_feedback_erledigt', { p_id: b.dataset.feedback }), 'Als erledigt markiert');
     } else if (b.dataset.spieler) {
       const name = b.dataset.name;
-      if (prompt('Spieler „' + name + '“ mit allen Daten endgültig löschen?\nZur Bestätigung den Namen eingeben:') === name) {
-        aktion(() => rpc('admin_spieler_loeschen', { p_nutzer: b.dataset.spieler }), 'Spieler gelöscht');
+      if (prompt('Spiely „' + name + '“ mit allen Daten endgültig löschen?\nZur Bestätigung den Namen eingeben:') === name) {
+        aktion(() => rpc('admin_spieler_loeschen', { p_nutzer: b.dataset.spieler }), 'Spiely gelöscht');
       }
     } else if (b.id === 'btn-suche') {
       ladeSpieler();

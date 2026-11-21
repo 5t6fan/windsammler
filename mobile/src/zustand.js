@@ -13,6 +13,7 @@ import { aktualisiereHeft, heftAbgleichen, pruefeAbzeichen, titel, SAMMEL_RADIUS
 import * as Online from './online';
 import { starteHintergrund, stoppeHintergrund, laeuftHintergrund, schreibeListe } from './hintergrund';
 
+// Schlüssel tragen noch den alten App-Namen – nicht umbenennen, sonst wären Sammelhefte und Einstellungen weg
 const SPEICHER = 'windsammler.v1';
 const HINWEIS = 'windsammler.hinweis';            // '1' = Hinweis, wenn eine neue Anlage sammelbar ist
 const SICHERHEIT = 'windsammler.sicherheit.v1';   // '1' = Sicherheitshinweis bestätigt
@@ -267,7 +268,7 @@ export function WindProvider({ children }) {
     // Kopie der wichtigsten Angaben, damit das Heft auch nach Daten-Updates (und Abbau) vollständig bleibt
     const fund = alt ? { ...alt } : {
       t: jetzt, marke: a.marke, modell: a.modell, typ: a.typ, kw: a.kw, nabe: a.nabe, rotor: a.rotor,
-      ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon,
+      ibn: a.ibn, ort: a.ort, kreis: a.kreis, land: a.land, park: a.parkKey, lat: a.lat, lon: a.lon, bauform: a.bauform,
     };
     if (beruehrt) fund.b = jetzt;
     const h = { ...heft, funde: { ...heft.funde, [a.id]: fund }, abzeichen: { ...heft.abzeichen } };
@@ -292,7 +293,7 @@ export function WindProvider({ children }) {
         speichere(h2);
         if (extra.length) text += ' · ' + extra.map((x) => x.ico + ' ' + x.name).join(' · ');
       }
-      if (r && r.punkte) text = '+' + r.punkte + ' Punkte · ' + text + (r.erstentdecker ? ' · 🚩 Erstentdecker!' : '') + (r.erstberuehrt ? ' · 🖐️ Erste/r am Turm!' : '');
+      if (r && r.punkte) text = '+' + r.punkte + ' Punkte · ' + text + (r.erstentdecker ? ' · 🚩 Erstentdecky!' : '') + (r.erstberuehrt ? ' · 🖐️ Als Erstes am Turm!' : '');
       else if (r && r.wartend) text += ' · wird übertragen, sobald Netz da ist';
       else if (r && r.fehler) text += ' · nicht gewertet: ' + r.fehler;
       zeige(text);
@@ -301,7 +302,7 @@ export function WindProvider({ children }) {
 
   // Import einer Sicherung (auch aus der Web-App): zusammenführen statt überschreiben
   const importiere = useCallback((fremd) => {
-    if (!fremd || typeof fremd.funde !== 'object') throw new Error('Kein Windsammler-Export');
+    if (!fremd || typeof fremd.funde !== 'object') throw new Error('Kein turbineSpotty-Export');
     const h = { v: 1, funde: { ...fremd.funde, ...heft.funde }, abzeichen: { ...(fremd.abzeichen || {}), ...heft.abzeichen } };
     for (const id of Object.keys(h.funde)) h.funde[id] = { ...h.funde[id] };
     if (D) { aktualisiereHeft(D, h, anlage); pruefeAbzeichen(D, h); }

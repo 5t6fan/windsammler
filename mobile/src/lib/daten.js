@@ -114,5 +114,6 @@ export function anlage(D, i) {
     ibn: z[F.ibn], status: D.status[z[F.status]], planung: z[F.status] === D.planungIdx,
     ort: z[F.ort], kreis: z[F.kreis], land: z[F.land] != null ? D.bundesland[z[F.land]] : null,
     see: z[F.see] === 1, parkKey: park ? park + '|' + z[F.kreis] : null,
+    bauform: F.bauform != null ? z[F.bauform] || null : null,
   };
 }

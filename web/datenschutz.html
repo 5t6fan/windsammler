@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Datenschutz – Windsammler</title>
+<title>Datenschutz – turbineSpotty</title>
 <meta name="theme-color" content="#0e6b58">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
@@ -32,7 +32,7 @@
       <li>Kein Tracking, keine Werbung, keine Analyse-Tools.</li>
       <li>Dein Standort wird auf deinem Gerät verarbeitet. Nur beim Sammeln oder Berühren mit Rangliste wird er einmal zur Prüfung an den Server geschickt und <b>nicht gespeichert</b>.</li>
       <li>Dein Sammelheft liegt nur auf deinem Gerät.</li>
-      <li>Für die Rangliste werden nur Spielername, gesammelte Anlagen, Zeitpunkte, Gruppen und deine Bewertungen gespeichert. Du kannst dein Konto jederzeit in der App löschen.</li>
+      <li>Für die Rangliste werden nur Spielyname, gesammelte Anlagen, Zeitpunkte, Gruppen und deine Bewertungen gespeichert. Du kannst dein Konto jederzeit in der App löschen.</li>
       <li>In der globalen Rangliste erscheinst du nur, wenn du das selbst einschaltest.</li>
     </ul>
   </div>
@@ -40,7 +40,7 @@
   <h2>1. Verantwortlicher</h2>
   <!-- TODO: Name, Anschrift und E-Mail des Verantwortlichen ergänzen, bevor die App öffentlich beworben wird. -->
   <p>
-    Der Windsammler ist ein privates, nicht-kommerzielles Hobbyprojekt. Verantwortlich ist der Betreiber des
+    turbineSpotty (früher „Windsammler“) ist ein privates, nicht-kommerzielles Hobbyprojekt. Verantwortlich ist das Betreiby des
     GitHub-Kontos <a href="https://github.com/5t6fan" rel="noopener">5t6fan</a>.<br>
     Kontakt: über die Projektseite
     <a href="https://github.com/5t6fan/windsammler/issues" rel="noopener">github.com/5t6fan/windsammler</a> (Bereich „Issues“).
@@ -76,13 +76,19 @@
     (z. B. Messenger) übergeben. Was dort damit geschieht, richtet sich nach deren Bedingungen. Genaue Koordinaten werden
     nicht geteilt.</p>
 
-  <h2>4. Kartendarstellung (OpenStreetMap)</h2>
+  <h2>4. Kartendarstellung (OpenStreetMap, optional Luftbild von Esri)</h2>
   <p>Die Karte wird aus Kartenkacheln der <b>OpenStreetMap Foundation</b> (St John’s Innovation Centre, Cowley Road, Cambridge,
     CB4 0WS, Vereinigtes Königreich) zusammengesetzt. Dazu lädt dein Gerät die Kacheln direkt von deren Servern; dabei werden
     deine IP-Adresse, Browser-Kennung und der angezeigte Kartenausschnitt übermittelt.</p>
   <p>Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an einer Kartendarstellung). Für das Vereinigte
     Königreich besteht ein Angemessenheitsbeschluss der EU-Kommission. Weitere Informationen:
     <a href="https://osmfoundation.org/wiki/Privacy_Policy" rel="noopener">Datenschutzerklärung der OSMF</a>.</p>
+  <p><b>Luftbild (optional):</b> Nur wenn du auf der Karte das Luftbild (🛰️) einschaltest, lädt dein Gerät die Bildkacheln
+    direkt von Servern der <b>Esri Inc.</b> (380 New York Street, Redlands, CA 92373, USA). Dabei werden deine IP-Adresse,
+    Browser-Kennung und der angezeigte Kartenausschnitt übermittelt. Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO
+    (berechtigtes Interesse an der von dir gewählten Luftbilddarstellung); eine Übermittlung in die USA ist dabei möglich.
+    Weitere Informationen: <a href="https://www.esri.com/en-us/privacy/overview" rel="noopener">Datenschutzhinweise von Esri</a>.
+    Die Einstellung wird nur auf deinem Gerät gespeichert.</p>
 
   <h2>5. Speicherung auf deinem Gerät</h2>
   <p>Die App speichert im Browser-Speicher deines Geräts (Local Storage und Offline-Cache): dein Sammelheft, gewählte
@@ -94,39 +100,41 @@
     im Sammelheft kannst du vorher eine Sicherung als Datei anlegen.</p>
 
   <h2>6. Rangliste und Gruppen (optional)</h2>
-  <p>Die Rangliste ist freiwillig. Wenn du sie nutzt, wird ein Spielerkonto beim Dienstleister <b>Supabase</b>
+  <p>Die Rangliste ist freiwillig. Wenn du sie nutzt, wird ein Spielykonto beim Dienstleister <b>Supabase</b>
     (Supabase Inc., 970 Toa Payoh North #07-04, Singapur 318992) angelegt. Die Datenbank liegt in einem Rechenzentrum in
     <b>Frankfurt am Main</b>. Supabase verarbeitet die Daten als Auftragsverarbeiter.</p>
   <h3>Welche Daten?</h3>
   <ul>
     <li>eine zufällige Kennung deines Kontos (keine E-Mail-Adresse, kein Passwort, kein Klarname nötig)</li>
-    <li>dein selbst gewählter Spielername</li>
+    <li>dein selbst gewählter Spielyname</li>
     <li>falls du eins festlegst: ein Passwort zum Wiederherstellen deines Kontos – nur als bcrypt-Hash, nie im Klartext</li>
     <li>gesammelte Anlagen mit Zeitpunkt und Punkten, ggf. Zeitpunkt der Turmberührung</li>
     <li>deine Bewertungen von Anlagen (Sterne, freiwilliger Text, Zeitpunkt), von dir abgegebene Meldungen unangemessener
-      Kommentare und von dir blockierte Spieler</li>
+      Kommentare und von dir blockierte Spielys</li>
     <li>ob du in der globalen Rangliste sichtbar sein möchtest</li>
     <li>deine Gruppenmitgliedschaften und von dir erstellte Gruppen</li>
+    <li>Feedback, das du über die App an das Team schickst (Text und Zeitpunkt, verknüpft mit deinem Konto). Bei neuem
+      Feedback geht eine Benachrichtigung ohne den Text und ohne deinen Spielynamen per E-Mail an das Betreiby.</li>
     <li>fehlgeschlagene Beitrittsversuche mit falschem Einladungscode (Schutz vor Missbrauch, Löschung nach einem Tag)</li>
     <li>technische Protokolle von Supabase einschließlich IP-Adresse (Betrieb und Sicherheit des Dienstes)</li>
   </ul>
   <h3>Wer sieht was?</h3>
-  <p>Mitglieder deiner Gruppen sehen deinen Spielernamen, deine Punkte, die Anzahl deiner Anlagen, Modelle und berührten Türme,
+  <p>Mitglieder deiner Gruppen sehen deinen Spielynamen, deine Punkte, die Anzahl deiner Anlagen, Modelle und berührten Türme,
     in deinem Profil außerdem deine Abzeichen, die Hersteller deiner Anlagen und gesammelte seltene Modelle (ohne Orte und Daten),
-    sowie bei einer Anlage, ob du sie als Erste/r gesammelt oder berührt hast (mit Datum). Alle anderen Spieler sehen dabei
-    nur, dass „ein anderer Spieler“ die Anlage zuerst entdeckt bzw. berührt hat – deinen Namen nur, wenn du in der globalen
+    sowie bei einer Anlage, ob du sie als Erstes gesammelt oder berührt hast (mit Datum). Alle anderen Spielys sehen dabei
+    nur, dass „ein anderes Spiely“ die Anlage zuerst entdeckt bzw. berührt hat – deinen Namen nur, wenn du in der globalen
     Rangliste sichtbar bist.</p>
-  <p><b>Globale Rangliste:</b> Nur wenn du „In der globalen Rangliste zeigen“ einschaltest, sehen alle angemeldeten Spieler
-    deinen Spielernamen mit denselben Zahlen. Du kannst das jederzeit wieder ausschalten.</p>
-  <p><b>Bewertungen:</b> Deine Bewertungen einer Anlage (Sterne, Text, Datum) sehen alle angemeldeten Spieler zusammen mit
-    deinem Spielernamen – und damit auch, dass du diese Anlage besucht hast. Du kannst sie jederzeit ändern oder löschen.
-    Schreibe bitte keine persönlichen Daten in den Text. Kommentare, die von mehreren Spielern gemeldet werden, werden
+  <p><b>Globale Rangliste:</b> Nur wenn du „In der globalen Rangliste zeigen“ einschaltest, sehen alle angemeldeten Spielys
+    deinen Spielynamen mit denselben Zahlen. Du kannst das jederzeit wieder ausschalten.</p>
+  <p><b>Bewertungen:</b> Deine Bewertungen einer Anlage (Sterne, Text, Datum) sehen alle angemeldeten Spielys zusammen mit
+    deinem Spielynamen – und damit auch, dass du diese Anlage besucht hast. Du kannst sie jederzeit ändern oder löschen.
+    Schreibe bitte keine persönlichen Daten in den Text. Kommentare, die von mehreren Spielys gemeldet werden, werden
     automatisch ausgeblendet. Wer eine Meldung abgegeben oder jemanden blockiert hat, ist für andere nicht sichtbar.</p>
   <p>Darüber hinaus sehen Personen außerhalb deiner Gruppen nichts von dir.</p>
   <h3>Rechtsgrundlage und Speicherdauer</h3>
   <p>Rechtsgrundlage ist Art. 6 Abs. 1 lit. b DSGVO (Bereitstellung der von dir gewünschten Ranglisten-Funktion).
     Die Daten werden gespeichert, bis du dein Konto löschst („Konto löschen“ im Tab Rangliste) – dann werden Profil, Funde,
-    Mitgliedschaften, Bewertungen und Meldungen sofort entfernt. Angefangene Anmeldungen ohne Spielernamen werden nach einem Tag automatisch gelöscht.</p>
+    Mitgliedschaften, Bewertungen, Meldungen und Feedback sofort entfernt. Angefangene Anmeldungen ohne Spielynamen werden nach einem Tag automatisch gelöscht.</p>
   <p>Eine Übermittlung in die USA oder andere Drittländer kann im Rahmen von Support und Betrieb durch Supabase nicht
     ausgeschlossen werden; sie erfolgt auf Grundlage der EU-Standardvertragsklauseln. Weitere Informationen:
     <a href="https://supabase.com/privacy" rel="noopener">Datenschutzerklärung von Supabase</a>.</p>
@@ -143,7 +151,7 @@
   <h2>8. Anlagendaten</h2>
   <p>Die angezeigten Windenergieanlagen stammen aus dem öffentlichen <b>Marktstammdatenregister</b> der Bundesnetzagentur
     (Datenlizenz Deutschland – Namensnennung – Version 2.0). Die App zeigt technische Angaben und Standorte der Anlagen,
-    jedoch keine Namen oder Daten der Betreiber.</p>
+    jedoch keine Namen oder Daten der Betreibys.</p>
 
   <h2>9. Deine Rechte</h2>
   <p>Du hast das Recht auf Auskunft (Art. 15 DSGVO), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung

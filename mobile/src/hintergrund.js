@@ -114,7 +114,7 @@ export async function starteHintergrund(D) {
   const hinten = await Location.requestBackgroundPermissionsAsync();
   if (hinten.status !== 'granted') {
     return Platform.OS === 'ios'
-      ? 'Bitte in den Einstellungen unter Windsammler → Standort „Immer“ wählen.'
+      ? 'Bitte in den Einstellungen unter turbineSpotty → Standort „Immer“ wählen.'
       : 'Bitte in den Einstellungen beim Standort „Immer zulassen“ wählen.';
   }
   if (D) await schreibeListe(D);
@@ -127,7 +127,7 @@ export async function starteHintergrund(D) {
     pausesUpdatesAutomatically: true,       // iOS pausiert bei Stillstand und spart Akku
     showsBackgroundLocationIndicator: true,
     foregroundService: {
-      notificationTitle: 'Windsammler hält Ausschau',
+      notificationTitle: 'turbineSpotty hält Ausschau',
       notificationBody: 'Du bekommst einen Hinweis, sobald eine neue Anlage sammelbar ist.',
       notificationColor: '#0e6b58',
     },

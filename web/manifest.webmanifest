@@ -1,7 +1,7 @@
 {
-  "name": "Windsammler",
-  "short_name": "Windsammler",
-  "description": "Windenergieanlagen in der Nähe finden und sammeln",
+  "name": "turbineSpotty",
+  "short_name": "turbineSpotty",
+  "description": "Windenergieanlagen in der Nähe spotten und sammeln",
   "lang": "de",
   "start_url": "./",
   "scope": "./",

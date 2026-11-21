@@ -1,4 +1,4 @@
--- Windsammler: Ranglisten in Gruppen mit Einladungscode.
+-- turbineSpotty (früher Windsammler): Ranglisten in Gruppen mit Einladungscode.
 -- Idempotent – kann nach Änderungen beliebig oft erneut ausgeführt werden.
 --
 -- Datenschutz: Gespeichert werden nur Spielername, gesammelte Anlagen und Zeitpunkte.
@@ -21,6 +21,8 @@ create table if not exists public.anlagen (
   planung boolean not null default false,
   selten  boolean not null default false  -- Modell mit höchstens 20 Anlagen in Deutschland
 );
+-- Modell, das es in Deutschland nur einmal gibt (Abzeichen „Unikat“)
+alter table public.anlagen add column if not exists unikat boolean not null default false;
 
 create table if not exists public.profile (
   id       uuid primary key references auth.users (id) on delete cascade,
@@ -140,6 +142,16 @@ create table if not exists public.geraete (
 );
 create index if not exists geraete_profil on public.geraete (profil);
 
+-- Feedback an das Team (Admin-Seite); wird mit dem Konto gelöscht
+create table if not exists public.feedback (
+  id       uuid primary key default gen_random_uuid(),
+  nutzer   uuid not null references public.profile (id) on delete cascade,
+  text     text not null check (char_length(text) between 3 and 1000),
+  zeit     timestamptz not null default now(),
+  erledigt timestamptz
+);
+create index if not exists feedback_zeit on public.feedback (zeit desc);
+
 -- Versandte Admin-Mails (für die Obergrenze pro Tag)
 create table if not exists public.mail_versand (
   zeit timestamptz not null default now()
@@ -167,6 +179,7 @@ alter table public.passwoerter enable row level security;
 alter table public.login_fehler enable row level security;
 alter table public.geraete    enable row level security;
 alter table public.mail_versand enable row level security;
+alter table public.feedback   enable row level security;
 
 -- Spielerprofil der aktuellen Sitzung: verknüpftes Profil (geraete) oder das eigene
 create or replace function public.ich()
@@ -199,7 +212,7 @@ returns uuid language plpgsql stable set search_path = '' as $$
 declare v uuid := public.ich();
 begin
   if v is null then raise exception 'Nicht angemeldet'; end if;
-  if not exists (select 1 from public.profile where id = v) then raise exception 'Kein Spielerprofil'; end if;
+  if not exists (select 1 from public.profile where id = v) then raise exception 'Kein Spielyprofil'; end if;
   return v;
 end $$;
 
@@ -496,7 +509,7 @@ begin
   end if;
 
   with f as (
-    select f.punkte, f.beruehrt, a.marke, a.modell, a.kw, a.nabe, a.ibn, a.selten,
+    select f.punkte, f.beruehrt, a.marke, a.modell, a.kw, a.nabe, a.ibn, a.selten, a.unikat,
            not exists (select 1 from public.funde e where e.anlage = f.anlage and e.zeit < f.zeit) as erst,
            f.beruehrt is not null and not exists (
              select 1 from public.funde e where e.anlage = f.anlage and e.beruehrt < f.beruehrt) as erst_b
@@ -511,6 +524,7 @@ begin
            coalesce(bool_or(nabe >= 160), false) as riese,
            coalesce(bool_or(nabe < 50), false) as zwerg,
            coalesce(bool_or(selten), false) as selten,
+           coalesce(bool_or(unikat), false) as unikat,
            coalesce(bool_or(erst), false) as pionier,
            coalesce(bool_or(erst_b), false) as erstkontakt
       from f
@@ -532,6 +546,7 @@ begin
       case when z.riese then 'riese' end,
       case when z.zwerg then 'zwerg' end,
       case when z.selten then 'selten' end,
+      case when z.unikat then 'unikat' end,
       case when z.kw >= 100000 then 'mw100' end,
       case when z.beruehrt >= 1 then 'b1' end,
       case when z.beruehrt >= 10 then 'b10' end,
@@ -611,7 +626,7 @@ begin
   select nutzer into v_wer from public.kommentare where id = p_kommentar;
   if v_wer is null then raise exception 'Kommentar nicht gefunden'; end if;
   if v_wer = v_uid then raise exception 'Du kannst dich nicht selbst blockieren'; end if;
-  if (select count(*) from public.blockiert where nutzer = v_uid) >= 500 then raise exception 'Höchstens 500 blockierte Spieler'; end if;
+  if (select count(*) from public.blockiert where nutzer = v_uid) >= 500 then raise exception 'Höchstens 500 blockierte Spielys'; end if;
   insert into public.blockiert (nutzer, blockiert) values (v_uid, v_wer) on conflict do nothing;
 end $$;
 
@@ -661,8 +676,29 @@ begin
     'gruppen',        (select count(*) from public.gruppen),
     'offen',          (select count(distinct kommentar) from public.meldungen),
     'ausgeblendet',   (select count(*) from (select kommentar from public.meldungen group by kommentar having count(*) >= 3) x),
-    'aelteste_meldung', (select min(zeit) from public.meldungen)
+    'aelteste_meldung', (select min(zeit) from public.meldungen),
+    'feedback_offen', (select count(*) from public.feedback where erledigt is null)
   );
+end $$;
+
+-- Feedback, offenes zuerst, dann das neueste
+create or replace function public.admin_feedback()
+returns table (id uuid, name text, text text, zeit timestamptz, erledigt timestamptz)
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  perform public._admin();
+  return query
+    select f.id, p.name, f.text, f.zeit, f.erledigt
+      from public.feedback f left join public.profile p on p.id = f.nutzer
+     order by f.erledigt is not null, f.zeit desc
+     limit 300;
+end $$;
+
+create or replace function public.admin_feedback_erledigt(p_id uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  perform public._admin();
+  update public.feedback set erledigt = now() where id = p_id and erledigt is null;
 end $$;
 
 -- Gemeldete Kommentare, älteste Meldung zuerst
@@ -728,6 +764,22 @@ begin
   delete from auth.users where id in (select sitzung from public.geraete where profil = p_nutzer);
   delete from auth.users where id = p_nutzer;
   delete from public.gruppen g where not exists (select 1 from public.mitglieder m where m.gruppe = g.id);
+end $$;
+
+-- ---------------------------------------------------------------- Feedback an das Team
+
+create or replace function public.feedback_senden(p_text text)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_uid  uuid := public._nutzer();
+  v_text text := btrim(coalesce(p_text, ''));
+begin
+  if char_length(v_text) < 3 then raise exception 'Bitte schreib ein paar Worte'; end if;
+  if char_length(v_text) > 1000 then raise exception 'Höchstens 1000 Zeichen'; end if;
+  if (select count(*) from public.feedback where nutzer = v_uid and zeit > now() - interval '24 hours') >= 5 then
+    raise exception 'Höchstens 5 Nachrichten pro Tag – danke für deinen Eifer!';
+  end if;
+  insert into public.feedback (nutzer, text) values (v_uid, v_text);
 end $$;
 
 -- ---------------------------------------------------------------- Konto löschen (DSGVO)
@@ -847,9 +899,9 @@ end $$;
 -- Versand über Resend (resend.com) per pg_net. Eingerichtet wird das einmalig im SQL Editor:
 --   select vault.create_secret('re_…', 'resend_api_key');       -- API-Key von resend.com
 --   select vault.create_secret('du@beispiel.de', 'admin_mail');  -- Adresse deines Resend-Kontos
--- Ohne diese beiden Einträge (oder ohne pg_net) wird keine Mail verschickt; Melden funktioniert trotzdem.
--- Die Mail enthält bewusst weder Kommentartext noch Spielernamen – die stehen auf der Admin-Seite.
--- Test:  select public._admin_mail('Test', 'Hallo vom Windsammler');
+-- Ohne diese beiden Einträge (oder ohne pg_net) wird keine Mail verschickt; Melden und Feedback funktionieren trotzdem.
+-- Die Mail enthält bewusst weder Kommentar- bzw. Feedbacktext noch Spielynamen – die stehen auf der Admin-Seite.
+-- Test:  select public._admin_mail('Test', 'Hallo von turbineSpotty');
 --        select status_code, content from net._http_response order by created desc limit 1;
 
 do $$
@@ -875,7 +927,7 @@ begin
   perform net.http_post(
     url     := 'https://api.resend.com/emails',
     headers := jsonb_build_object('Authorization', 'Bearer ' || v_key, 'Content-Type', 'application/json'),
-    body    := jsonb_build_object('from', 'Windsammler <onboarding@resend.dev>', 'to', jsonb_build_array(v_mail),
+    body    := jsonb_build_object('from', 'turbineSpotty <onboarding@resend.dev>', 'to', jsonb_build_array(v_mail),
                                   'subject', p_betreff, 'text', p_text)
   );
   return true;
@@ -895,9 +947,9 @@ begin
   if v_n not in (1, 3) then return null; end if;
   select anlage into v_anlage from public.kommentare where id = new.kommentar;
   perform public._admin_mail(
-    case when v_n = 1 then 'Windsammler: neue Meldung' else 'Windsammler: Kommentar ausgeblendet (3 Meldungen)' end,
+    case when v_n = 1 then 'turbineSpotty: neue Meldung' else 'turbineSpotty: Kommentar ausgeblendet (3 Meldungen)' end,
     'Ein Kommentar zu Anlage ' || coalesce(v_anlage, '?') || ' wurde gemeldet (' || v_n || '× bisher).' ||
-      case when v_n >= 3 then E'\nEr ist jetzt für alle außer dem Verfasser ausgeblendet.' else '' end ||
+      case when v_n >= 3 then E'\nEr ist jetzt für alle außer dem Verfassy ausgeblendet.' else '' end ||
       E'\n\nBitte prüfen: https://5t6fan.github.io/windsammler/admin.html');
   return null;
 exception when others then
@@ -909,11 +961,29 @@ drop trigger if exists meldung_mail on public.meldungen;
 create trigger meldung_mail after insert on public.meldungen
   for each row execute function public._meldung_mail();
 
+-- Mail bei neuem Feedback (ohne Text und Namen)
+create or replace function public._feedback_mail()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  perform public._admin_mail('turbineSpotty: neues Feedback',
+    'Es ist neues Feedback eingegangen (' ||
+      (select count(*) from public.feedback where erledigt is null) || ' offen).' ||
+      E'\n\nLesen: https://5t6fan.github.io/windsammler/admin.html');
+  return null;
+exception when others then
+  raise warning 'Feedback-Mail fehlgeschlagen: %', sqlerrm;
+  return null;
+end $$;
+
+drop trigger if exists feedback_mail on public.feedback;
+create trigger feedback_mail after insert on public.feedback
+  for each row execute function public._feedback_mail();
+
 -- ---------------------------------------------------------------- Rechte
 
 revoke all on all functions in schema public from public, anon;
 revoke all on function public.distanz_m(float8, float8, float8, float8), public._nutzer(), public._admin(), public.aufraeumen(),
-  public._admin_mail(text, text), public._meldung_mail() from authenticated;
+  public._admin_mail(text, text), public._meldung_mail(), public._feedback_mail() from authenticated;
 grant execute on function
   public.sammeln(text, float8, float8, timestamptz),
   public.mein_stand(),
@@ -940,6 +1010,9 @@ grant execute on function
   public.admin_kommentar_loeschen(uuid),
   public.admin_spieler(text),
   public.admin_spieler_loeschen(uuid),
+  public.admin_feedback(),
+  public.admin_feedback_erledigt(uuid),
+  public.feedback_senden(text),
   public.konto_loeschen(),
   public.passwort_setzen(text),
   public.hat_passwort(),

@@ -22,7 +22,7 @@ export default function TabLayout() {
         headerRight: () => <Text style={{ color: c.leise, fontSize: 12, marginRight: 16 }}>{status}</Text>,
         sceneStyle: { backgroundColor: c.bg },
       }}>
-      <Tabs.Screen name="index" options={{ title: 'In der Nähe', headerTitle: 'Windsammler', tabBarIcon: ({ focused }) => <Symbol zeichen="🧭" an={focused} /> }} />
+      <Tabs.Screen name="index" options={{ title: 'In der Nähe', headerTitle: 'turbineSpotty', tabBarIcon: ({ focused }) => <Symbol zeichen="🧭" an={focused} /> }} />
       <Tabs.Screen name="heft" options={{ title: 'Sammelheft', tabBarIcon: ({ focused }) => <Symbol zeichen="📒" an={focused} /> }} />
       <Tabs.Screen name="rang" options={{ title: 'Rangliste', tabBarIcon: ({ focused }) => <Symbol zeichen="🏆" an={focused} /> }} />
     </Tabs>

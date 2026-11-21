@@ -35,6 +35,7 @@ FELDER = [
     "kreis",       # Landkreis
     "land",        # Index in "bundesland"-Liste
     "see",         # 1 = auf See (offshore)
+    "bauform",     # Sonderbauform: 1 = Vertikalachser, 2 = Flugwindanlage, null = üblich (horizontale Achse)
 ]
 
 # Endgültig stillgelegte Anlagen stehen nicht mehr in der Landschaft
@@ -116,6 +117,25 @@ def modell(typ: str | None, marke_: str | None) -> str | None:
     return f"{buchstaben}-{nummer}" if buchstaben == "E" else f"{buchstaben}{nummer}"
 
 
+# Sonderbauformen aus dem MaStR-Feld "Technologie". Als Vertikalläufer gemeldet sind auch viele große
+# Anlagen mit horizontaler Achse (E-40, V80, N117 ...) – das sind Eingabefehler. Vertikalachser gibt es
+# praktisch nur als Kleinwindanlagen, deshalb zählen nur Anlagen bis VERTIKAL_MAX_KW, und bekannte
+# Hersteller/Typen mit horizontaler Achse werden ausgeschlossen.
+VERTIKAL_MAX_KW = 100
+HORIZONTAL_MARKEN = {"Enercon", "Vestas", "Tacke", "REpower Systems", "SkyWind", "FuSystems SkyWind"}
+HORIZONTAL_TYP = re.compile(r"HAWT|AEROMAN|SKY\s*NG|SKYWIND", re.I)
+
+
+def bauform(technologie: str | None, kw: float | None, marke_: str | None, typ: str | None) -> int | None:
+    if technologie == "Flugwindenergieanlage":
+        return 2
+    if technologie != "Vertikalläufer" or kw is None or kw > VERTIKAL_MAX_KW:
+        return None
+    if marke_ in HORIZONTAL_MARKEN or (typ and HORIZONTAL_TYP.search(typ)):
+        return None
+    return 1
+
+
 def datensaetze(pfad: Path):
     """Streamt die flachen MaStR-Datensätze als dicts (konstanter Speicherbedarf)."""
     ereignisse = ET.iterparse(pfad, events=("start", "end"))
@@ -183,6 +203,7 @@ def main():
         see = katalog.get(d.get("WindAnLandOderAufSee"), "") == "Windkraft auf See"
         mk = marke(katalog.get(d.get("Hersteller")))
         typ = (d.get("Typenbezeichnung") or "").strip() or None
+        kw = zahl(d.get("Bruttoleistung"))
         zeilen.append([
             d["EinheitMastrNummer"],
             lat, lon,
@@ -191,7 +212,7 @@ def main():
             hersteller(mk),
             typ,
             modell(typ, mk),
-            zahl(d.get("Bruttoleistung")),
+            kw,
             zahl(d.get("Nabenhoehe")),
             zahl(d.get("Rotordurchmesser")),
             d.get("Inbetriebnahmedatum"),
@@ -200,6 +221,7 @@ def main():
             d.get("Landkreis"),
             bundesland(katalog.get(d.get("Bundesland"))),
             1 if see else 0,
+            bauform(katalog.get(d.get("Technologie")), kw, mk, typ),
         ])
         zaehler["übernommen"] += 1
 
@@ -230,6 +252,7 @@ def main():
     print("  Status:", dict(Counter(status.werte[z[i["status"]]] for z in zeilen)))
     print(f"  Marken: {len(hersteller.werte)}",
           Counter(hersteller.werte[z[i["hersteller"]]] for z in zeilen if z[i["hersteller"]] is not None).most_common(8))
+    print("  Sonderbauformen:", dict(Counter(z[i["bauform"]] for z in zeilen if z[i["bauform"]])))
     modelle = Counter((z[i["hersteller"]], z[i["modell"]]) for z in zeilen if z[i["modell"]])
     print(f"  Modellfamilien: {len(modelle)}",
           [(hersteller.werte[h] if h is not None else "?", m, n) for (h, m), n in modelle.most_common(12)])

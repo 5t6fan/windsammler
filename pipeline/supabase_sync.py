@@ -74,18 +74,26 @@ def main():
                      group by marke, modell having count(*) <= %s) s
              where neu.marke is not distinct from s.marke and neu.modell = s.modell
         """, (SELTEN_MAX,))
+        # Unikate: Modelle, die es nur einmal gibt
+        cur.execute("""
+            update neu set unikat = true
+              from (select marke, modell from neu
+                     where not planung and modell is not null
+                     group by marke, modell having count(*) = 1) s
+             where neu.marke is not distinct from s.marke and neu.modell = s.modell
+        """)
         # Einfügen/aktualisieren; verschwundene Anlagen bleiben stehen, damit alte Funde gültig bleiben
         cur.execute("""
             insert into public.anlagen select * from neu
             on conflict (id) do update set
               lat = excluded.lat, lon = excluded.lon, marke = excluded.marke, modell = excluded.modell,
               kw = excluded.kw, nabe = excluded.nabe, ibn = excluded.ibn,
-              planung = excluded.planung, selten = excluded.selten
+              planung = excluded.planung, selten = excluded.selten, unikat = excluded.unikat
         """)
         con.commit()
-        cur.execute("select count(*), count(*) filter (where selten), count(*) filter (where planung) from public.anlagen")
-        gesamt, selten, planung = cur.fetchone()
-        print(f"{n} Anlagen übertragen. In der Datenbank: {gesamt} (davon {selten} selten, {planung} in Planung).")
+        cur.execute("select count(*), count(*) filter (where selten), count(*) filter (where unikat), count(*) filter (where planung) from public.anlagen")
+        gesamt, selten, unikat, planung = cur.fetchone()
+        print(f"{n} Anlagen übertragen. In der Datenbank: {gesamt} (davon {selten} selten, {unikat} Unikate, {planung} in Planung).")
 
 
 if __name__ == "__main__":
