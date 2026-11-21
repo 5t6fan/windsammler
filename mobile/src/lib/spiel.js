@@ -83,7 +83,7 @@ export function beschreibung(D, a) {
   if (a.nabe && a.rotor) {
     s.push('Nabenhöhe ' + fmt0.format(a.nabe) + ' m, Rotordurchmesser ' + fmt0.format(a.rotor) +
       ' m – mit Blattspitze rund ' + fmt0.format(a.nabe + a.rotor / 2) + ' m hoch.');
-    if (istKuhkratzer(a)) s.push('Kuhkratzer: Die untere Blattspitze kommt dem Boden bis auf rund ' + fmt0.format(freiraum(a)) + ' m nahe.');
+    if (istKuhkratzer(a)) s.push('Kuhkratzy: Die untere Blattspitze kommt dem Boden bis auf rund ' + fmt0.format(freiraum(a)) + ' m nahe.');
   } else if (a.nabe) {
     s.push('Nabenhöhe ' + fmt0.format(a.nabe) + ' m.');
   }
@@ -122,7 +122,7 @@ export function etiketten(D, a, fund) {
   else if (n && n <= 20) t.push({ text: '💎 selten', art: 'selten' });
   if (a.ibn && a.ibn < '2000' && !a.planung) t.push({ text: '🕰️ Oldtimer', art: 'normal' });
   if (a.nabe >= 160) t.push({ text: '🗼 Riese', art: 'normal' });
-  if (istKuhkratzer(a)) t.push({ text: '🐄 Kuhkratzer', art: 'normal' });
+  if (istKuhkratzer(a)) t.push({ text: '🐄 Kuhkratzy', art: 'normal' });
   return t;
 }
 
@@ -235,7 +235,7 @@ export const ABZEICHEN = [
   { k: 'alt', ico: '🕰️', name: 'Oldtimer', text: 'Baujahr vor 2000', fund: (f) => f.ibn && f.ibn < '2000' },
   { k: 'riese', ico: '🗼', name: 'Riese', text: 'Nabe ab 160 m', fund: (f) => f.nabe >= 160 },
   { k: 'zwerg', ico: '🐭', name: 'Winzling', text: 'Nabe unter 50 m', fund: (f) => f.nabe && f.nabe < 50 },
-  { k: 'kuh', ico: '🐄', name: 'Kuhkratzer', text: 'Blattspitze unter ' + KUHKRATZER + ' m über dem Boden', fund: istKuhkratzer },
+  { k: 'kuh', ico: '🐄', name: 'Kuhkratzy', text: 'Blattspitze unter ' + KUHKRATZER + ' m über dem Boden', fund: istKuhkratzer },
   { k: 'selten', ico: '💎', name: 'Rarität', text: 'Modell mit ≤ 20 Anlagen', test: (s) => s.selten.length > 0, belege: (s) => s.selten.map(fundZeile) },
   { k: 'unikat', ico: '🦄', name: 'Unikat', text: 'Modell, das es in Deutschland nur einmal gibt', test: (s) => s.unikate.length > 0, belege: (s) => s.unikate.map(fundZeile) },
   { k: 'vertikal', ico: '🌪️', name: 'Senkrechtstarty', text: 'Sonderbauform, z. B. Vertikalachser', test: (s) => s.bauform.length > 0, belege: (s) => s.bauform.map((f) => fundZeile(f) + ' · ' + BAUFORM[f.bauform].name) },

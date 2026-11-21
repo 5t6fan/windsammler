@@ -502,7 +502,7 @@ const Online = (() => {
       (p.raritaeten.length ? '<h4 class="sheet-unter">💎 Raritäten</h4><ul class="belege">' +
         p.raritaeten.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>' : '') +
       '<p class="leise klein">Gezählt werden die online gewerteten Funde. Wo und wann gesammelt wurde, ist nicht sichtbar. ' +
-      'Manche Abzeichen aus dem Sammelheft (z. B. Park komplett, Kuhkratzer) zählen hier nicht mit.</p>');
+      'Manche Abzeichen aus dem Sammelheft (z. B. Park komplett, Kuhkratzy) zählen hier nicht mit.</p>');
   }
 
   async function ladeBlockierte() {

@@ -410,7 +410,7 @@ function Profil({ p, onZu }) {
         {p.raritaeten.length > 0 && <Abschnitt>💎 Raritäten</Abschnitt>}
         {p.raritaeten.map((r) => <Text key={r} style={{ color: c.text, paddingVertical: 3 }}>• {r}</Text>)}
         <Leise klein style={{ marginTop: 16 }}>
-          Gezählt werden die online gewerteten Funde. Wo und wann gesammelt wurde, ist nicht sichtbar. Manche Abzeichen aus dem Sammelheft (z. B. Park komplett, Kuhkratzer) zählen hier nicht mit.
+          Gezählt werden die online gewerteten Funde. Wo und wann gesammelt wurde, ist nicht sichtbar. Manche Abzeichen aus dem Sammelheft (z. B. Park komplett, Kuhkratzy) zählen hier nicht mit.
         </Leise>
       </View>}
     </Blatt>
